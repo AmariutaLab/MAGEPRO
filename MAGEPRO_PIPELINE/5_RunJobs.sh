@@ -1,6 +1,6 @@
 #!/bin/bash
-module load cpu/0.15.4 
-module load parallel/20200822 
+# module load cpu/0.15.4 
+# module load parallel/20200822 
 
 #--- read command line arguments
 input_column=$1
