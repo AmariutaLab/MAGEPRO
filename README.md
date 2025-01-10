@@ -142,6 +142,7 @@ MAGEPRO utilizes external eQTL summary statistics to improve gene models trained
 
 | Flags | Description |
 | -------- | -------- |
+| **--magepro_path**| Path to where MAGEPRO is saved |
 | **--bfile** | Path to PLINK binary input file prefix (this pipeline will only use sample IDs with both GE and GENOTYPE data) |
 | **--out** | Path to save output files |
 | **--scratch** | Path to scratch directory (gene-specific files will be stored here) |

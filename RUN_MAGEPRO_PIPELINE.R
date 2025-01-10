@@ -4,6 +4,7 @@ suppressMessages(library("data.table"))
 # --- PARSE COMMAND LINE ARGUMENTS 
 
 option_list = list(
+  make_option("--magepro_path", action="store", default=NA, type="character", help="path to where MAGEPRO is saved [required]"),
   make_option("--bfile", action="store", default=NA, type='character',
               help="Path to PLINK binary input file prefix (minus chr number and bed/bim/fam) [required] \n
 	      MAGEPRO will take samples with both GE and GENOTYPE data"),
@@ -103,6 +104,30 @@ if ( opt$verbose == 2 ) {
 } else {
   SYS_PRINT = T
 }
+
+if (is.na(opt$magepro_path)) {
+  cat("ERROR: --magepro_path not provided. Please specify path to where you store MAGEPRO.\n")
+  q()
+}
+if (is.na(opt$bfile)) {
+  cat("ERROR: --bfile not provided.\n")
+  q()
+}
+if (is.na(opt$out)) {
+  cat("ERROR: --out not provided.\n")
+  q()
+}
+if (is.na(opt$ge)) {
+  cat("ERROR: --scratch not provided.\n")
+  q()
+}
+if (is.na(opt$ge)) {
+  cat("ERROR: --ge not provided.\n")
+  q()
+}
+
+setwd(opt$magepro_path)
+cat("Set working directory to", opt$magepro_path, "\n")
 
 # --- COLLECT PEOPLE WITH BOTH GE AND GENOTYPE DATA
 if ( opt$verbose >= 1 ) cat("### EXTRACTING SAMPLES WITH BOTH GE AND GENOTYPE DATA\n")
