@@ -100,7 +100,7 @@ ls
 | **GEUVADIS_normalized_gene_expression_EUR.bed.gz** | Sample gene expression data |
 | **MAGEPRO_SUMSTATS_SuSiE.tar.gz** | Posterior effect sizes of external eQTL summary statistics |
 
-4. Uncompress sample data  
+4. Uncompress sample data. Here 'path to plink' is a path to binary file of plink.
 ```
 tar -zxvf GEUVADIS_EUR_genotypes.tar.gz  
 tar -zxvf MAGEPRO_SUMSTATS_SuSiE.tar.gz  
@@ -116,7 +116,7 @@ cd ../MAGEPRO_SUMSTATS_SuSiE
 Rscript split_by_gene.R -d mesahis -o ./ -s ../../../MAGEPRO/SAMPLE_DATA/sample_genes.txt
 ```
 
-6. Use sample genotype/gene expression/covariates data to run MAGEPRO. Here `SAMPLE_FILES` is an output folder.
+6. Use sample genotype/gene expression/covariates data to run MAGEPRO. Here `SAMPLE_FILES` is an output folder. 'Path to gcta' is a path to binary file of gcta (e.g. [gcta_nr_robust](https://github.com/gusevlab/fusion_twas/blob/master/gcta_nr_robust))
 ```
 cd ../../../MAGEPRO  
 mkdir ../SAMPLE_FILES
@@ -131,6 +131,7 @@ bash tutorial_run.sh 'path to plink' 'path to gcta'
 ```
 cd ../SAMPLE_FILES/OUTPUT
 ```
+It takes around 2 minutes to download the sample datasets and 30 seconds to run the demo (i.e. tutorial_run.sh).
 
 ## Preparing datasets
 
