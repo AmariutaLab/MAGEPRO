@@ -69,13 +69,16 @@ b_qtls = np.reshape(b_qtls.T, (bim.shape[0], 1))
 #print(b_qtls.shape)
 
 # --- SIMULATE LASSO GENE MODEL
-best_penalty, coef, h2g, hsq_p, r2all, gexpr = sim_eqtl(z_eqtl, samplesizes, b_qtls, float(set_h2), temp_dir, threads) #this runs gcta and lasso 
+best_penalty_lasso, coef, h2g, hsq_p, r2_lasso, gexpr = sim_eqtl(z_eqtl, samplesizes, b_qtls, float(set_h2), temp_dir, threads) #this runs gcta and lasso 
 #gexpr already standardized
+
+# --- FIT ENET GENE MODEL 
+best_penalty_enet, coef_enet, r2_enet = fit_sparse_regularized_lm(z_eqtl, gexpr, 'enet')
 
 # --- if the best lasso model with the best penalty gives coef of all 0, we have to use top1 to compute r2 afr
 if np.all(coef == 0):
     print("using top1 backup")
-    r2all, r2_top1, coef = top1_cv(samplesizes, z_eqtl, gexpr)
+    r2_lasso, r2_top1, coef = top1_cv(samplesizes, z_eqtl, gexpr)
 
 # --- PRINT HERITABILITY ESTIMATE FROM sim_eqtl() function 
 print(("heritability " + pop + ": "))
@@ -86,7 +89,8 @@ executable_dir="/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO/BENCHMARK/PRSc
 ld_reference_dir="/expanse/lustre/projects/ddp412/kakamatsu/eQTLsummary/multipopGE/benchmark/LD_ref"
 prscsx_working_dir=temp_dir+"/PRSCSx/"
 prscsx_weights = PRSCSx_shrinkage(executable_dir, ld_reference_dir, prscsx_working_dir, sumstats_file, "500,500" , population_sumstat, bim, 1e-7)
-prscsx_r2, prscsx_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty)
+prscsx_r2, prscsx_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_lasso, 'lasso')
+prscsx_enet_r2, prscsx_enet_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_enet, 'enet')
 
 # --- PROCESS SUMMARY STATISTICS
 num_causal_susie = 0
@@ -98,41 +102,57 @@ for i in range(0,len(sumstats_files)):
     num_causal_susie += len([index for index in CAUSAL if pips[index] >= 0.95])
 
 # --- RUN CV MAGEPRO 
-magepro_r2, magepro_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty)
+magepro_r2, magepro_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_lasso, 'lasso')
+magepro_enet_r2, magepro_enet_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_enet, 'enet')
 
-print("magepro: ")
+print("magepro lasso: ")
 print(magepro_r2)
-print("prscsx: ")
+print("magepro enet: ")
+print(magepro_enet_r2)
+print("prscsx lasso: ")
 print(prscsx_r2)
-print("afronly: ")
-print(r2all)
+print("prscsx enet: ")
+print(prscsx_enet_r2)
+print("afronly lasso: ")
+print(r2_lasso)
+print("afronly enet: ")
+print(r2_enet)
 
 # --- POPULATE OUTPUTS
 #coef = afr lasso model gene model 
 lasso_causal_nonzero = len([index for index in CAUSAL if coef[index] != 0])
+enet_causal_nonzero = len([index for index in CAUSAL if coef_enet[index] != 0])
 #magepro_coef = magepro gene model 
 magepro_causal_nonzero = len([index for index in CAUSAL if magepro_coef[index] != 0])
+magepro_enet_causal_nonzero = len([index for index in CAUSAL if magepro_enet_coef[index] != 0])
 #prscsx_coef = prscsx gene model
 prscsx_causal_nonzero = len([index for index in CAUSAL if prscsx_coef[index] != 0])
+prscsx_enet_causal_nonzero = len([index for index in CAUSAL if prscsx_enet_coef[index] != 0])
 #beta of causal snp from afr lasso
 afr_B_causal_list = [ coef[i] for i in CAUSAL ]
 afr_B_causal = ','.join(map(str, afr_B_causal_list))
+afr_enet_B_causal_list = [ coef_enet[i] for i in CAUSAL ]
+afr_enet_B_causal = ','.join(map(str, afr_enet_B_causal_list))
 #beta of causal snp from magepro
 magepro_B_causal_list = [ magepro_coef[i] for i in CAUSAL ]
 magepro_B_causal = ','.join(map(str, magepro_B_causal_list))
+magepro_enet_B_causal_list = [ magepro_enet_coef[i] for i in CAUSAL ]
+magepro_enet_B_causal = ','.join(map(str, magepro_enet_B_causal_list))
 #beta of causal snp from prscsx
 prscsx_B_causal_list = [ prscsx_coef[i] for i in CAUSAL ]
 prscsx_B_causal = ','.join(map(str, prscsx_B_causal_list))
+prscsx_enet_B_causal_list = [ prscsx_enet_coef[i] for i in CAUSAL ]
+prscsx_enet_B_causal = ','.join(map(str, prscsx_enet_B_causal_list))
 #actual beta
 true_B_causal = beta_causal
 
 #h2g = afr h2
 #magepro_r2 = magepro cv r2 
-#r2all = afronly magepro cv r2
+#r2_lasso = afronly magepro cv r2
 
 filename = out_results + "/magepro_results_" + str(samplesizes) + "_h" + str(set_h2) + ".csv"
 
-output = pd.DataFrame({'sim': sim, 'afr_h2': h2g, 'lasso_causal': lasso_causal_nonzero, 'magepro_causal': magepro_causal_nonzero, 'prscsx_causal': prscsx_causal_nonzero, 'afr_beta_causal': afr_B_causal, 'magepro_beta_causal': magepro_B_causal, 'prscsx_beta_causal': prscsx_B_causal, 'true_B_causal': true_B_causal, 'afr_r2': r2all, 'magepro_r2': magepro_r2, 'prscsx_r2': prscsx_r2, 'causal_susie': num_causal_susie}, index=[0])
+output = pd.DataFrame({'sim': sim, 'afr_h2': h2g, 'lasso_causal': lasso_causal_nonzero, 'enet_causal': enet_causal_nonzero, 'magepro_causal': magepro_causal_nonzero, 'magepro_enet_causal': magepro_enet_causal_nonzero, 'prscsx_causal': prscsx_causal_nonzero, 'prscsx_enet_causal': prscsx_enet_causal_nonzero, 'afr_beta_causal': afr_B_causal, 'afr_enet_beta_causal': afr_enet_B_causal, 'magepro_beta_causal': magepro_B_causal, 'magepro_enet_beta_causal': magepro_enet_B_causal, 'prscsx_beta_causal': prscsx_B_causal, 'prscsx_enet_beta_causal': prscsx_enet_B_causal, 'true_B_causal': true_B_causal, 'afr_r2': r2_lasso, 'afr_enet_r2': r2_enet, 'magepro_r2': magepro_r2, 'magepro_enet_r2': magepro_enet_r2, 'prscsx_r2': prscsx_r2, 'prscsx_enet_r2': prscsx_enet_r2, 'causal_susie': num_causal_susie}, index=[0])
 if sim == 1:
     output.to_csv(filename, sep="\t", index=False, header = True)
 else:

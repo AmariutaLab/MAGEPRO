@@ -6,6 +6,16 @@ suppressMessages(library('dplyr'))
 suppressMessages(library('susieR'))
 
 # --- PREDICTION MODELS
+# Elastic Net
+weights.enet = function( genos , pheno , alpha=0.5 ) {
+	eff.wgt = matrix( 0 , ncol=1 , nrow=ncol(genos) )
+	# remove monomorphics
+	sds = apply( genos  , 2 , sd )
+	keep = sds != 0 & !is.na(sds)
+	enet = cv.glmnet( x=genos[,keep] , y=pheno , alpha=alpha , nfold=5 , intercept=T , standardize=F )
+	eff.wgt[ keep ] = coef( enet , s = "lambda.min")[2:(sum(keep)+1)]
+	return( eff.wgt )
+}
 
 # PLINK: LASSO
 weights.lasso = function( input , hsq , snp , out=NA ) {

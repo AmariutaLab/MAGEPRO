@@ -2,9 +2,9 @@
 #SBATCH -p shared
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH -t 30:00:00
+#SBATCH -t 35:00:00
 #SBATCH -J runsimsmulti
 #SBATCH -A csd832
 #SBATCH -o ../../../../working_err/runsimsmulti.%j.%N.out

@@ -72,17 +72,22 @@ def sim_trait(g, h2g):
     return y, y_std  
 
 # --- FIT GENE MODEL 
-def fit_lasso_katie(Z, y):
+def fit_sparse_regularized_lm(Z, y, m):
     """
     Infer eqtl coefficients using LASSO regression for simeQTL function above. Uses the PLINK-style coordinate descent algorithm
     that is bootstrapped by the current h2g estimate.
     :param Z:  numpy.ndarray n x p genotype matrix
     :param y: numpy.ndarray gene expression for n individuals
+    :param m: str indicating type of model ['enet', 'lasso']
     :return: (numpy.ndarray, float, float) tuple of the LASSO coefficients, the r-squared score, and log-likelihood
     """
     n, p = Z.shape
     alphas=np.logspace(-2,1.2,50,base=10)
     kf=KFold(n_splits=5)
+
+    if m not in ['enet', 'lasso']:
+        print("Invalid model type passed to param m")
+        sys.exit(1)
     
     #lm() r2 extraction
     lm_r2_allpenalty=[] 
@@ -98,12 +103,15 @@ def fit_lasso_katie(Z, y):
             y_train, y_test = y[train_index], y[test_index]
             y_train_std=(y_train-np.mean(y_train))/np.std(y_train)
             y_test_std=(y_test-np.mean(y_test))/np.std(y_test)
-            lasso = lm.Lasso(fit_intercept=True)
-            lasso.set_params(alpha=penalty,tol=1e-4,max_iter=1000)
-            lasso.fit(X_train,y_train_std)
+            if m == 'lasso':
+                model = lm.Lasso(fit_intercept=True)
+            else: # enet 
+                model = lm.ElasticNet(fit_intercept=True)
+            model.set_params(alpha=penalty,tol=1e-4,max_iter=1000)
+            model.fit(X_train,y_train_std)
 
             #predict on testing 
-            predicted_expressions[test_index] = np.dot(X_test, lasso.coef_)
+            predicted_expressions[test_index] = np.dot(X_test, model.coef_)
 
         #evaluate r2 using lm
         lreg = LinearRegression().fit(np.array(predicted_expressions).reshape(-1, 1), y)
@@ -112,11 +120,15 @@ def fit_lasso_katie(Z, y):
 
     besti=np.argmax(lm_r2_allpenalty)
     bestalpha=alphas[besti]
-    lasso = lm.Lasso(fit_intercept=True)
-    lasso.set_params(alpha=bestalpha,tol=1e-4,max_iter=1000)
-    lasso.fit(Z, y)
-    coef = lasso.coef_
+    if m == 'lasso':
+        model = lm.Lasso(fit_intercept=True)
+    else: # enet 
+        model = lm.ElasticNet(fit_intercept=True)
+    model.set_params(alpha=bestalpha,tol=1e-4,max_iter=1000)
+    model.fit(Z, y)
+    coef = model.coef_
     return bestalpha, coef, lm_r2_allpenalty[besti]
+
 
 # --- SIMULATE EQTL 
 def sim_eqtl(Z_qtl, nqtl, b_qtls, eqtl_h2, temp, thread_n): 
@@ -136,7 +148,7 @@ def sim_eqtl(Z_qtl, nqtl, b_qtls, eqtl_h2, temp, thread_n):
     b = b_qtls[:,0]
     nonzeroindex = np.where(b != 0)[0]
     gexpr = sim_trait(np.dot(Z_qtl,b), eqtl_h2)[0]
-    penalty, coef, r2= fit_lasso_katie(Z_qtl, gexpr)
+    penalty, coef, r2= fit_sparse_regularized_lm(Z_qtl, gexpr, 'lasso')
     if r2>0:
         h2g,hsq_se,hsq_p = get_hsq(Z_qtl,gexpr,tempdir,"/expanse/lustre/projects/ddp412/kakamatsu/fusion_twas-master/gcta_nr_robust", thread_n)
     else:
@@ -361,13 +373,19 @@ def top1_cv(N, genotypes, phenotype):
     return r2_top1_cv, r2_top1_training, coef_top1_full
 
 
-def magepro_cv(N, geno_magepro, pheno_magepro, susie_weights, best_penalty):
+def magepro_cv(N, geno_magepro, pheno_magepro, susie_weights, best_penalty, m):
     # N = sample size 
     # geno_magepro = genotypes
     # pheno_magepro = gene expression or phenotype data 
     # susie_weights = dictionary of external datasets to use (susie posterior weights)
         # Ancestry : Array of weights
-    # best_penalty = best alpha penalty from single pop lasso cv 
+    # best_penalty = best alpha penalty from single pop model corresponding to m (from lasso or enet)
+    # m = str indicating type of model ['enet', 'lasso']
+
+    if m not in ['enet', 'lasso']:
+        print("Invalid model type passed to param m")
+        sys.exit(1)
+
     alphas_magepro=np.logspace(-2,1.2,50,base=10)
     kf_magepro=KFold(n_splits=5)
     #store r2 from lm for each penalty
@@ -380,11 +398,14 @@ def magepro_cv(N, geno_magepro, pheno_magepro, susie_weights, best_penalty):
             y_train_std_magepro=(y_train_magepro-np.mean(y_train_magepro))/np.std(y_train_magepro)
             y_test_std_magepro=(y_test_magepro-np.mean(y_test_magepro))/np.std(y_test_magepro)
             X_train_magepro, X_test_magepro = geno_magepro[train_index_magepro], geno_magepro[test_index_magepro]
-            #lasso for afronly weights
-            lasso = lm.Lasso(fit_intercept=True)
-            lasso.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
-            lasso.fit(X_train_magepro, y_train_std_magepro)
-            coef_magepro = lasso.coef_
+            # afronly weights
+            if m == 'lasso':
+                model = lm.Lasso(fit_intercept=True)
+            else:
+                model = lm.ElasticNet(fit_intercept=True)
+            model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
+            model.fit(X_train_magepro, y_train_std_magepro)
+            coef_magepro = model.coef_
             if np.all(coef_magepro == 0):
                 wgts = weights_marginal_FUSION(X_train_magepro, y_train_magepro, beta = True)
                 coef_magepro, r2_top1 = top1(y_test_std_magepro, X_test_magepro, wgts)
@@ -408,10 +429,13 @@ def magepro_cv(N, geno_magepro, pheno_magepro, susie_weights, best_penalty):
     magepro_r2 = lm_r2_allpenalty[besti_magepro] # returning this for cv r2
 
     # full model for training r2 and full coef
-    lasso = lm.Lasso(fit_intercept=True)
-    lasso.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
-    lasso.fit(geno_magepro, pheno_magepro)
-    coef_magepro = lasso.coef_
+    if m == 'lasso':
+        model = lm.Lasso(fit_intercept=True)
+    else:
+        model = lm.ElasticNet(fit_intercept=True)
+    model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
+    model.fit(geno_magepro, pheno_magepro)
+    coef_magepro = model.coef_
     if np.all(coef_magepro == 0):
         wgts = weights_marginal_FUSION(geno_magepro, pheno_magepro, beta = True)
         coef_magepro, r2_top1 = top1(pheno_magepro, geno_magepro, wgts)
@@ -460,13 +484,19 @@ def PRSCSx_shrinkage(exec_dir, ldref_dir, working_dir, input, ss, pp, BIM, phi):
     return prscsx_sumstats_weights
 
 
-def prscsx_cv(N, geno_prscsx, pheno_prscsx, prscsx_weights, best_penalty):
+def prscsx_cv(N, geno_prscsx, pheno_prscsx, prscsx_weights, best_penalty, m):
     # N = sample size 
     # geno_prscsx = genotypes
     # pheno_prscsx = gene expression or phenotype data 
     # prscsx_weights = dictionary of external datasets to use from prscsx shrinkage 
         # Ancestry : Array of weights
-    # best_penalty = best alpha penalty from single pop lasso cv
+    # best_penalty = best alpha penalty from single pop model corresponding to m (from lasso or enet)
+    # m = str indicating type of model ['enet', 'lasso']
+
+    if m not in ['enet', 'lasso']:
+        print("Invalid model type passed to param m")
+        sys.exit(1)
+
     alphas_prscsx=np.logspace(-2,1.2,50,base=10)
     kf_prscsx=KFold(n_splits=5)
     #store r2 from lm for each penalty
@@ -479,11 +509,14 @@ def prscsx_cv(N, geno_prscsx, pheno_prscsx, prscsx_weights, best_penalty):
             y_train_std_prscsx=(y_train_prscsx-np.mean(y_train_prscsx))/np.std(y_train_prscsx)
             y_test_std_prscsx=(y_test_prscsx-np.mean(y_test_prscsx))/np.std(y_test_prscsx)
             X_train_prscsx, X_test_prscsx = geno_prscsx[train_index_prscsx], geno_prscsx[test_index_prscsx]
-            #lasso for afronly weights
-            lasso = lm.Lasso(fit_intercept=True)
-            lasso.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
-            lasso.fit(X_train_prscsx, y_train_std_prscsx)
-            coef_prscsx = lasso.coef_
+            #afronly weights
+            if m == 'lasso':
+                model = lm.Lasso(fit_intercept=True)
+            else:
+                model = lm.ElasticNet(fit_intercept=True)
+            model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
+            model.fit(X_train_prscsx, y_train_std_prscsx)
+            coef_prscsx = model.coef_
             if np.all(coef_prscsx == 0):
                 wgts = weights_marginal_FUSION(X_train_prscsx, y_train_prscsx, beta = True)
                 coef_prscsx, r2_top1 = top1(y_test_std_prscsx, X_test_prscsx, wgts)
@@ -507,10 +540,13 @@ def prscsx_cv(N, geno_prscsx, pheno_prscsx, prscsx_weights, best_penalty):
     prscsx_r2 = lm_r2_allpenalty[besti_prscsx] # returning this for cv r2
 
     # full model for training r2 and full coef
-    lasso = lm.Lasso(fit_intercept=True)
-    lasso.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
-    lasso.fit(geno_prscsx, pheno_prscsx)
-    coef_prscsx = lasso.coef_
+    if m == 'lasso':
+        model = lm.Lasso(fit_intercept=True)
+    else:
+        model = lm.ElasticNet(fit_intercept=True)
+    model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
+    model.fit(geno_prscsx, pheno_prscsx)
+    coef_prscsx = model.coef_
     if np.all(coef_prscsx == 0):
         wgts = weights_marginal_FUSION(geno_prscsx, pheno_prscsx, beta = True)
         coef_prscsx, r2_top1 = top1(pheno_prscsx, geno_prscsx, wgts)
