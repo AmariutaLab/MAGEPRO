@@ -195,11 +195,23 @@ def create_betas(effects, num_causal, num_snps, causal_index):
 
 def random_correlated_effect(effect1, heritability, correlation):
     # effect1 = first effect for which you want another effect that is correlated to it
-    # heritability = preset heritability value (variance of the distribution of effect size)
+    # heritability = preset PER-SNP heritability value (variance of the distribution of effect size)
     # correlation = desired correlation of the two effect sizes 
     effect_temp = np.random.normal(0, np.sqrt(heritability))
     effect2 = (correlation*effect1) + np.sqrt(1-(correlation**2))*effect_temp # see supplements for more information
     return (effect2)
+
+def correlated_effects_cholesky(heritability1, heritability2, heritability3, correlation, nums):
+    # correlation = genetic correlation
+    # nums = number of snps
+    # Note if nums is large, it is more efficient to loop through nums and sample size (1, 2) rather than sample (nums, 2) at once
+    cov = np.array([[heritability1/nums, np.sqrt(heritability1/nums)*np.sqrt(heritability2/nums)*correlation,  np.sqrt(heritability1/nums)*np.sqrt(heritability3/nums)*correlation],
+    [np.sqrt(heritability2/nums)*np.sqrt(heritability1/nums)*correlation, heritability2/nums, np.sqrt(heritability2/nums)*np.sqrt(heritability3/nums)*correlation], 
+    [np.sqrt(heritability3/nums)*np.sqrt(heritability1/nums)*correlation, np.sqrt(heritability3/nums)*np.sqrt(heritability3/nums)*correlation, heritability2/nums]] )
+    L = np.linalg.cholesky(cov)
+    effects = np.random.normal(loc=0, scale=1, size=(nums, 3))
+    samples = effects @ L.T
+    return (samples)
 
 def get_hsq(geno, gene_expr, out, gcta, thread_n):
     nindv, nsnp = geno.shape

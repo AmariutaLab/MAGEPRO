@@ -88,7 +88,7 @@ executable_dir="/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO/BENCHMARK/PRSc
 ld_reference_dir="/expanse/lustre/projects/ddp412/kakamatsu/eQTLsummary/multipopGE/benchmark/LD_ref"
 prscsx_working_dir=temp_dir+"/PRSCSx/"
 prscsx_weights = PRSCSx_shrinkage(executable_dir, ld_reference_dir, prscsx_working_dir, sumstats_file, "500,500" , population_sumstat, bim, 1e-7)
-prscsx_r2, prscsx_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty)
+prscsx_r2, prscsx_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty, 'lasso')
 
 # --- PROCESS SUMMARY STATISTICS
 num_causal_susie = 0
@@ -100,7 +100,7 @@ for i in range(0,len(sumstats_files)):
     num_causal_susie += len([index for index in CAUSAL if pips[index] >= 0.95])
 
 # --- RUN CV MAGEPRO 
-magepro_r2, magepro_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty)
+magepro_r2, magepro_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty, 'lasso')
 
 print("magepro: ")
 print(magepro_r2)

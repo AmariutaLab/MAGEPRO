@@ -26,7 +26,8 @@ import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
 from sklearn.linear_model import LinearRegression
 
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+#parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 from magepro_simulations_functions import * # SEE HERE FOR ALL FUNCTION CALLS
@@ -46,7 +47,8 @@ set_num_causal = int(args[7]) #number of causal snps
 CAUSAL = [ int(index) for index in args[8].split(',') ] # indices of causal snps
 sim = int(args[9]) #iteration of simulation
 set_h2 = float(args[10]) #predetermiend h2g
-target_pop_betas = [ float(index) for index in args[11].split(',') ] 
+#target_pop_betas = [ float(index) for index in args[11].split(',') ] 
+betas_file = args[11] # file holding effect sizes for each ancestry
 temp_dir = args[12] #temporary directory for gcta
 out_results = args[13]
 threads = args[14]
@@ -61,6 +63,8 @@ z_eqtl = np.array(pd.read_csv(genotype_file, sep = "\t", header = None))
 
 # --- SIMULATE CAUSAL EFFECT SIZES 
 #causal eqtl effect sizes; matrix dim = snps x 1 gene
+df_betas = pd.read_csv(betas_file, sep = '\t')
+target_pop_betas = df_betas[pop].values
 betas = create_betas(target_pop_betas, set_num_causal, bim.shape[0], CAUSAL)
 beta_causal = ','.join(map(str, target_pop_betas))
 

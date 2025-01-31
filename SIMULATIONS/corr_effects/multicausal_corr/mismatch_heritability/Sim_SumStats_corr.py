@@ -23,7 +23,8 @@ import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
 from sklearn.linear_model import LinearRegression
 
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+#parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 from magepro_simulations_functions import * # SEE HERE FOR ALL FUNCTION CALLS
@@ -39,7 +40,7 @@ set_num_causal = int(args[5]) #how many causal variants?
 CAUSAL = [ int(index) for index in args[6].split(',') ] #indices of causal variants
 sim = int(args[7]) #iteration of simulation
 set_h2 = float(args[8]) #predetermined h2g
-target_pop_betas = [ float(index) for index in args[9].split(',') ] # effect sizes for the target population, necessary to compute effect sizes that are correlated across ancestries
+betas_file = args[9] # file holding effect sizes for each ancestry
 corr = float(args[10]) # correlation of causal effect sizes across populations
 samplesize_target = int(args[11]) #sample size
 out_sumstat = args[12] #output dir for sumstats
@@ -57,7 +58,9 @@ z_eqtl = np.array(pd.read_csv(genotype_file, sep = "\t", header = None))
 
 # --- SIMULATE CAUSAL EFFECT SIZES 
 #causal eqtl effect sizes
-current_pop_betas = [ random_correlated_effect(effect, set_h2 / set_num_causal, corr) for effect in target_pop_betas ]
+#current_pop_betas = [ random_correlated_effect(effect, set_h2 / set_num_causal, corr) for effect in target_pop_betas ]
+df_betas = pd.read_csv(betas_file, sep = '\t')
+current_pop_betas = df_betas[pop].values
 betas = create_betas(current_pop_betas, set_num_causal, bim.shape[0], CAUSAL)
 b_qtls = np.array(betas) 
 b_qtls = np.reshape(b_qtls.T, (bim.shape[0], 1))
