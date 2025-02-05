@@ -203,7 +203,7 @@ def random_correlated_effect(effect1, heritability, correlation):
 
 def correlated_effects_cholesky(heritability1, heritability2, heritability3, correlation, nums):
     # correlation = genetic correlation
-    # nums = number of snps
+    # nums = number of causal snps
     # Note if nums is large, it is more efficient to loop through nums and sample size (1, 2) rather than sample (nums, 2) at once
     cov = np.array([[heritability1/nums, np.sqrt(heritability1/nums)*np.sqrt(heritability2/nums)*correlation,  np.sqrt(heritability1/nums)*np.sqrt(heritability3/nums)*correlation],
     [np.sqrt(heritability2/nums)*np.sqrt(heritability1/nums)*correlation, heritability2/nums, np.sqrt(heritability2/nums)*np.sqrt(heritability3/nums)*correlation], 
@@ -334,11 +334,11 @@ def allele_qc(a1, a2, ref1, ref2):
     
     return {"keep": keep, "flip": flip}
 
-def load_process_sumstats(file_sumstats, bim_df):
+def load_process_sumstats(file_sumstats, bim_df, sep="\t"):
     # LOAD AND PROCESS SUMMARY STATISTICS (SUSIE POSTERIOR) FOR MAGEPRO 
 
     # --- LOAD IN SUM STATS
-    sumstats = pd.read_csv(file_sumstats, sep = "\t")
+    sumstats = pd.read_csv(file_sumstats, sep=sep)
 
     # --- get SNPs in common between bim and sumstats
     snps_bim = pd.DataFrame(bim_df[:, 1], columns=['SNP'])
