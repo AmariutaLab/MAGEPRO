@@ -126,7 +126,7 @@ tryCatch({
         res <- susie_rss(bhat = df[[5]], shat = df[[6]], R = ld_matrix, n = opt$n, max_iter = 100)
     }, warning = function(w) {
         if (grepl("IBSS algorithm did not converge", w$message)) {
-            cat("WARNING in run_susie.R:131: IBSS algorithm did not converge in 100 iterations. ", debug_path, "\n")
+            cat("WARNING in run_susie.R:131: IBSS algorithm did not converge in 100 iterations. ", "\n")
             quit(status=1)
         } else {
             cat(w$message, "\n")

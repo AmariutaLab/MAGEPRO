@@ -20,7 +20,9 @@ from sklearn.metrics import r2_score
 from scipy.special import ndtr
 from magepro_simulations_functions import (magepro_cv, top1_cv,
                                            fit_sparse_regularized_lm,
-                                           load_process_sumstats)
+                                           load_process_sumstats,
+                                           correlated_effects_cholesky,
+                                           create_betas)
 
 NUMTARGET_LIST = [300]
 WINDOW = 500000
@@ -32,7 +34,7 @@ PHEN_VAR_GENE_COMPONENT = [0.01]
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
 DEFAULT_NUM_OF_PEOPLE_GWAS = 100000
 SEP = "\t"
-OUTPUT_COLUMNS = f"GENE{SEP}HSQ{SEP}HSSQ_PV{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}\n"
+OUTPUT_COLUMNS = f"""GENE{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}\n"""
 
 def get_ld(prefix):
     # return cholesky L
@@ -93,7 +95,7 @@ def sim_beta(L, ncausal, index_output, eqtl_h2, rescale=True):
     """
 
     n_snps = L.shape[0]
-    if eqtl_h2 > 0 and ncausal > 0:
+    if eqtl_h2 != 0 and ncausal > 0:
         # choose how many eQTLs
         n_qtls = ncausal
         c_qtls = index_output
@@ -133,6 +135,7 @@ def sim_trait(g, h2g):
     y -= np.mean(y)
     y_std = np.std(y)
     y /= y_std
+
     y_std = y_std.item()
     return y, y_std
 
@@ -221,10 +224,9 @@ def pick_rand_gene(plink_path, geno_prefix_path_list, random_genes_folder):
                 print('Not enough snps in chosen gene. Rerunning...')
                 subprocess.run(f'rm -rf {random_genes_folder}/*', shell=True)
                 continue
-        index_causal = np.random.randint(0, min_snps - 1)
 
         print('Successfully picked a random gene')
-        return output_list, str(chr), index_causal
+        return output_list, str(chr), min_snps
 
 
 def get_gcta_hsq(geno, gexpr, out, gcta):
@@ -349,10 +351,7 @@ def sim_gwas(L, ngwas, beta, h2ge):
     """
     Simulate a GWAS using `ngwas` individuals such that genetics explain `h2ge` of phenotype.
         This function approximates genotypes under an LD structure using an MVN model. Generating
-        genotype for `ngwas` individuals takes `O(np^2)` time. Simulating a phenotype and
-        performing marginal regression for each variant takes `O(np)` time. If `n > p`, which is
-        typically the case for GWAS (at a fixed region), this function should be slower than `sim_gwasfast`,
-        which requires `O(p^2)` time to simulate GWAS summary results.
+        genotype for `ngwas` individuals takes `O(np^2)` time.
 
     :param L: numpy.ndarray lower cholesky factor of the p x p LD matrix for the population
     :param ngwas: int the number of GWAS genotypes to sample
@@ -439,7 +438,7 @@ def run_magepro(target_gene,
 
         Returns
         -------
-        heritability value, heritability p-value, lasso betas, lasso_pval, lasso r2, magepro betas, magepro r2
+        heritability value, heritability p-value, magepro betas, magepro_pval, magepro r2, lasso betas, lasso_pval, lasso r2
     """
     bim, fam, G_all = read_plink(target_gene)
     bim = np.array(bim)
@@ -451,14 +450,14 @@ def run_magepro(target_gene,
         print("using top1 backup")
         r2all, r2_top1, coef = top1_cv(num_people, Z_eqtl, gexpr)
 
-    print(("heritability " + pop + ": "))
-    print(h2g)
-
     # num_causal_susie = 0
     sumstats_weights = {}
     for i in range(0, len(sumstats_files_external)):
         varname = pops_external[i] + 'weights'
         weights, pips = load_process_sumstats(sumstats_files_external[i], bim, sep=" ")
+        # if SuSiE didn't converge, we cannot run magepro
+        if weights[0] == float('-inf'):
+            return float('-inf'), -1, np.array(-1), -1, np.array(-1), -1
         sumstats_weights[varname] = weights
         # num_causal_susie += len([index for index in CAUSAL if pips[index] >= 0.95])
     magepro_r2, magepro_coef = magepro_cv(num_people, Z_eqtl, gexpr, sumstats_weights, best_penalty, m="lasso")
@@ -512,7 +511,7 @@ def arg_parser():
                         type=str,
                         help="Path to geno file list, coma separated")
     parser.add_argument('--pops_list', required=True, type=str,
-                        help="Coma Separated list of populations")
+                        help="Coma Separated list of populations. Target population first")
     parser.add_argument('--tmpdir', required=True,
                         type=str, help="Path to temporary directory")
     parser.add_argument('--out', required=True,
@@ -562,40 +561,68 @@ def main():
     
     for i in range(100):
         # pick random gene available in all populations
-        random_gene_list, chr, index_output = pick_rand_gene(
+        random_gene_list, chr, min_num_snps = pick_rand_gene(
                                               args.plink_path,
                                               GENO_PREFIX_LIST, 
                                               rgenes)
-        
         for NUMTARGET in NUMTARGET_LIST:
             for NCAUSAL in NCAUSAL_ARR:
+                if NCAUSAL > min_num_snps:
+                    print("Error: Too many Causal SNPs specified. Change the number of minimum SNPs in pick_rand_gene function")
+                    return 
+                index_causals = np.random.choice([i for i in range(0, min_num_snps)], 
+                                                 NCAUSAL, replace=False)
+
                 for H2GE in PHEN_VAR_GENE_COMPONENT:
                     for EQTL_H2 in EQTL_H2_ARR:
                         simulated_genotypes = dict()
                         simulated_betas = dict()
                         simulated_gexprs = dict()
                         sumstats_files_external = []
+
+                        effects = correlated_effects_cholesky(EQTL_H2,
+                                                              EQTL_H2,
+                                                              EQTL_H2,
+                                                              corr=0.8,
+                                                              nums=NCAUSAL)
+                        # effects_df is a DataFrame, where columns are
+                        # populations, rows represent SNP weights for causal 
+                        # SNPs
+                        effects_df = pd.DataFrame(effects)
+                        effects_df.columns = POPS_LIST
+
                         ### We use this for loop to create summary statistics
-                        for i, (random_gene, geno_prefix, curr_pop) in enumerate(zip(random_gene_list, GENO_PREFIX_LIST, POPS_LIST)):
+                        for i, (rand_gene, geno_prefix, curr_pop) in enumerate(zip(random_gene_list, GENO_PREFIX_LIST, POPS_LIST)):
                             # 1. Simulate LD, Simulate Genotypes
-                            bim, L = get_ld(random_gene)
+                            print("Simlate LD and Genotypes")
+                            bim, L = get_ld(rand_gene)
                             CURR_NUM_PEOPLE = DEFAULT_NUM_OF_PEOPLE_EQTL
-                            
+
                             # target population is always first
                             if i == 0:
                                 CURR_NUM_PEOPLE = NUMTARGET
 
                             Z = sim_geno(L, CURR_NUM_PEOPLE)
                             # 2. Simulate Beta, Simulate Gene Expression
-                            # TODO: Right now only 1 causal supported
-                            b = sim_beta(L, NCAUSAL, index_output, EQTL_H2)
-                            gexpr = sim_trait(np.dot(Z, b), EQTL_H2)[0]
-
+                            print("Simulate Latent Betas and Gene Expression")
+                            beta = create_betas(effects=effects_df[curr_pop].values,
+                                             num_causal=NCAUSAL,
+                                             num_snps=L.shape[0],
+                                             causal_index=index_causals)
+                            gexpr = sim_trait(np.dot(Z, beta), EQTL_H2)[0]
                             # 3. Build SuSiE summary statistics
-                            curr_gene = f'{os.path.basename(random_gene)}_{NCAUSAL}_{EQTL_H2:.3f}_{H2GE:.3f}_{CURR_NUM_PEOPLE}'
+                            curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.3f}_{H2GE:.3f}_{CURR_NUM_PEOPLE}'
                             print(f"Build SuSiE summary statistics for {curr_gene}")
                             sumstats_path = os.path.join(sumstats_path_base, curr_pop)
                             ld_path = os.path.join(sumstats_path_base, curr_pop)
+
+                            simulated_genotypes[curr_pop] = Z
+                            simulated_betas[curr_pop] = beta
+                            simulated_gexprs[curr_pop] = gexpr
+
+                            # if target cohort, we don't need to perform fine-mapping
+                            if i == 0:
+                                continue
                             sumstat_output_file = build_susie_sumstats(
                                 bim=bim,
                                 geno=Z,
@@ -608,14 +635,6 @@ def main():
                                 cNUM_PEOPLE=CURR_NUM_PEOPLE
                             )
                             sumstats_files_external.append(sumstat_output_file)
-
-                            simulated_genotypes[curr_pop] = Z
-                            simulated_betas[curr_pop] = b
-                            simulated_gexprs[curr_pop] = gexpr
-
-                        sumstats_files_external = sumstats_files_external[1::]
-                        # pops_external = pops_external[1::]
-
                         # 4. Run MAGEPRO; target population is first
                         print("Run MAGEPRO")
                         GCTA_h2, h2_pval, lasso_coef, lasso_r2, magepro_coef, magepro_r2 = run_magepro(
@@ -629,6 +648,12 @@ def main():
                             sumstats_files_external=sumstats_files_external,
                             pops_external=POPS_LIST[1::]    # here we just slice
                         )
+                        if GCTA_h2 == float('-inf'):
+                            print("SuSiE summary statistics were not calculated properly for this gene.")
+                            print("Debug information:")
+                            print("Current genes:", random_gene_list)
+                            print("Summary statistics:", sumstats_files_external)
+                            continue
 
                         # 5. Perform TWAS
                         print("Perform TWAS")
@@ -637,13 +662,12 @@ def main():
                         gwas = sim_gwas(L, DEFAULT_NUM_OF_PEOPLE_GWAS,
                                         simulated_betas[POPS_LIST[0]] * alpha,
                                         H2GE)
-                        
+
                         LD_test = np.dot(L, L.T)
                         z_twas_lasso, p_twas_lasso = compute_twas(
                                                                 gwas,
                                                                 lasso_coef,
                                                                 LD_test)
-
                         z_twas_magepro, p_twas_magepro = compute_twas(gwas,
                                                                     magepro_coef,
                                                                     LD_test)
@@ -651,7 +675,7 @@ def main():
                         target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.3f}_{H2GE:.3f}_{NUMTARGET}'
 
                         with open(args.out, "a") as f:
-                                f.write(f"{target_gene}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}\n")
+                                f.write(f"""{target_gene}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}\n""")
 
         # clean up
         # command = f'rm -rf {rgenes}'
