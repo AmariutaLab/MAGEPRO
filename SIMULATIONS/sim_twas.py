@@ -28,13 +28,13 @@ NUMTARGET_LIST = [300]
 WINDOW = 500000
 
 NCAUSAL_ARR = [1] # number of causal SNPs for eQTL file
-EQTL_H2_ARR = [0.1] # True heritability value
-PHEN_VAR_GENE_COMPONENT = [0.01]
+EQTL_H2_ARR = [0.0001, 0.001, 0.005, 0.01] # True heritability value
+PHEN_VAR_GENE_COMPONENT = [0.1]
 
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
 DEFAULT_NUM_OF_PEOPLE_GWAS = 100000
 SEP = "\t"
-OUTPUT_COLUMNS = f"""GENE{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}\n"""
+OUTPUT_COLUMNS = f"""GENE{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL\n"""
 
 def get_ld(prefix):
     # return cholesky L
@@ -611,7 +611,7 @@ def main():
                                              causal_index=index_causals)
                             gexpr = sim_trait(np.dot(Z, beta), EQTL_H2)[0]
                             # 3. Build SuSiE summary statistics
-                            curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.3f}_{H2GE:.3f}_{CURR_NUM_PEOPLE}'
+                            curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.3f}_{CURR_NUM_PEOPLE}'
                             print(f"Build SuSiE summary statistics for {curr_gene}")
                             sumstats_path = os.path.join(sumstats_path_base, curr_pop)
                             ld_path = os.path.join(sumstats_path_base, curr_pop)
@@ -672,7 +672,7 @@ def main():
                                                                     magepro_coef,
                                                                     LD_test)
 
-                        target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.3f}_{H2GE:.3f}_{NUMTARGET}'
+                        target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.3f}_{NUMTARGET}'
 
                         with open(args.out, "a") as f:
                                 f.write(f"""{target_gene}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}\n""")
