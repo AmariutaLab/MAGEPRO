@@ -182,6 +182,8 @@ MAGEPRO utilizes external eQTL summary statistics to improve gene models trained
 | --in_sample | Comma-separated list of TRUE/FALSE indicating whether the ld reference is in sample or not; used for susie fine mapping |
 | --out_susie   | Path to susie output directory [required if using MAGEPRO and not skipping SuSiE]|
 | --skip_susie  | Boolean to skip SuSiE preprocessing. This assumes summary statistics in sumstats_dir have columns 8/9/10 with PIP/POSTERIOR/CS from susie (default FALSE) |
+| --regress_pcs | Boolean, whether to regress PCs out of genotypes or not.|
+| --num_pcs | Number of PCs to regress out if regress_pcs is set to TRUE.
 | --n_threads | Integer value representing how many threads to be used by 5th step of MAGEPRO_PIPELINE (5_RunJobs.sh or 5_batch_RunJobs.sh) |
 
 
@@ -298,7 +300,11 @@ If you would like to run MAGEPRO on one gene, it is possible to run MAGEPRO.R se
 | --in_sample | Comma-separated list of TRUE/FALSE indicating whether the ld reference is in sample or not; used for susie fine mapping |
 | --out_susie | Path to SuSiE output directory [required if using MAGEPRO and not skipping SuSiE] |
 | --skip_susie | Boolean to skip SuSiE preprocessing. This assumes summary statistics in sumstats_dir have columns 8/9/10 with PIP/POSTERIOR/CS from SuSiE (default=FALSE) |
-| --n_threads | Integer value representing how many threads to be used by MAGEPRO_PIPELINE/5_RunJobs.sh (default 1) |
+| --regress_pcs | Boolean, whether to regress PCs out of genotypes or not.|
+| --pcs_eigenvec | Path to file that stores eigenvectors of PCs.|
+| --num_pcs | Numeric, specifies number of PCs to regress out if regress_pcs is set to TRUE.|
+
+
 
 ## Directories 
 

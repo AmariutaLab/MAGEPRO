@@ -85,7 +85,14 @@ option_list = list(
   make_option("--out_susie", action="store", default=NA, type='character',
               help="Path to susie output directory [required if using MAGEPRO and not skipping susie]"),
   make_option("--skip_susie", action="store_true", default=FALSE,
-              help="Boolean to skip SuSiE preprocessing. This assumes summary statistics in sumstats_dir have columns 8/9/10 with PIP/POSTERIOR/CS from susie")
+              help="Boolean to skip SuSiE preprocessing. This assumes summary statistics in sumstats_dir have columns 8/9/10 with PIP/POSTERIOR/CS from susie"),
+  make_option("--regress_pcs", action="store_true", default=FALSE,
+              help="Boolean, whether to regress PCs out of genotypes or not."),
+  make_option("--pcs_eigenvec", action="store", default=NA, type="character",
+              help="Path to file that stores eigenvectors of PCs."),
+  make_option("--num_pcs", action="store", default=5, type='numeric',
+              help="Numeric, specifies number of PCs to regress out if regress_pcs is set to TRUE.")
+	
 )
 
 # --- PARSE COMMAND LINE ARGS
@@ -482,6 +489,20 @@ if ( !is.na(opt$covar) && opt$resid ) {
 	genos$bed = scale(genos$bed)
 }
 
+if (opt$regress_pcs) {
+	if (is.na(opt$pcs_eigenvec)) {
+		cat("ERROR: Specify path to --pcs_eigenvec to regress PCs!\n")
+		cleanup()
+		q()
+	}
+	if ( opt$verbose == 2 ) cat("Regressing", opt$num_pcs, "PCs out of the genotypes\n")
+	df_pcs <- fread(opt$pcs_eigenvec) # columns – PCs; rows – people (i.e. FID/IID) and PCs
+	for (i in 1:ncol(genos$bed)) {
+		genos$bed[,i] = summary(lm(genos$bed[,i] ~ as.matrix(df_pcs[,3:ncol(df_pcs)]) ))$resid
+	}
+	genos$bed = scale(genos$bed)
+}
+
 N.tot = nrow(genos$bed)
 if ( opt$verbose >= 1 ) cat(nrow(pheno),"phenotyped samples, ",nrow(genos$bed),"genotyped samples, ",ncol(genos$bed)," markers\n")
 
@@ -635,12 +656,12 @@ if ( opt$crossval <= 1 ) {
 		if ( opt$verbose >= 1 ) cat("- Crossval fold",cv,"\n")
 		indx = which(folds==cv,arr.ind=TRUE)
 		cv.train = cv.all[-indx,] #training set is the other 4 groups 
-		intercept = mean( cv.train[,3] ) 
-		cv.train[,3] = scale(cv.train[,3]) 
+		intercept = mean( cv.train[,3] )
+		cv.train[,3] = scale(cv.train[,3])
 		cv.file = paste(opt$tmp,".cv",sep='')
 		write.table( cv.train , quote=F , row.names=F , col.names=F , file=paste(cv.file,".keep",sep=''))	
 		arg = paste( opt$PATH_plink ," --allow-no-sex --bfile ",opt$tmp," --keep ",cv.file,".keep --out ",cv.file," --make-bed",sep='')
-		system(arg , ignore.stdout=SYS_PRINT,ignore.stderr=SYS_PRINT)
+		system(arg, ignore.stdout=SYS_PRINT,ignore.stderr=SYS_PRINT)
 		
 		# SINGLE ANCESTRY------------------------------------------------------------------
 		# lasso_h2 defined when we split datasets

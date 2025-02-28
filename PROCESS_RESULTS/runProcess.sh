@@ -12,7 +12,7 @@
 #SBATCH --constraint="lustre"
 
 source ~/.bashrc
-conda activate r_env
+conda activate magepro_env
 
 output=$1 #output dir
 weightsdir=$2 #weights dir
