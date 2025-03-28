@@ -1,7 +1,7 @@
 suppressMessages(library("optparse"))
 suppressMessages(library("data.table"))
 suppressMessages(library("dplyr"))
-#suppressMessages(library("METRO"))
+suppressMessages(library("METRO"))
 cat("Running run_metro.r\n")
 
 # NOTE THAT BY DEFAULT WE USE THE TARGET EQTL COHORT LD AS THE GWAS LD
@@ -95,6 +95,7 @@ METRORes2 <- METRO2SumStat(eQTLzscores, eQTLLDs, GWASzscores,
                          eQTLLDs[[1]], eQTL_samplesizes, opt$ngwas_of_people, verbose = T)
 metro_statistic = METRORes2$alpha 
 metro_p = METRORes2$pvalueLRT
+metro_lrtstat = METRORes2$LRTStat
 metro_betas = METRORes2$beta
-write.table(data.frame(a = c(metro_statistic), p = c(metro_p)), file = paste0(opt$output_folder, "_stats.txt"), quote = F, row.names = F, col.names = T, sep = '\t')
+write.table(data.frame(a = c(metro_statistic), p = c(metro_p), lrt = (metro_lrtstat)), file = paste0(opt$output_folder, "_stats.txt"), quote = F, row.names = F, col.names = T, sep = '\t')
 write.table(data.frame(betas = metro_betas), file = paste0(opt$output_folder, "_betas.txt"), quote = F, row.names = F, col.names = T, sep = '\t')

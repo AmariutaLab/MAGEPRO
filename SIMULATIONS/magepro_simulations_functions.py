@@ -181,9 +181,9 @@ def sim_effect_sizes_only(h2g, num_causal):
     return effect_sizes
 
 def create_betas(effects, num_causal, num_snps, causal_index):
-    # effects = list of causal effect sizes 
-    # num_causal = number of causal variants 
-    # num_snps = number of snps 
+    # effects = list of causal effect sizes
+    # num_causal = number of causal variants
+    # num_snps = number of snps
     # causal_index = list containing indices of causal variants (same order as effects)
     betas = np.zeros(num_snps)
     if num_causal >= 2:
@@ -362,7 +362,7 @@ def load_process_sumstats(file_sumstats, bim_df, sep="\t"):
     # match snps, flip signs? - unfortunately the snps present in one population isn't always present in the other
     qc = allele_qc(pd.Series(sumstats['A1']), pd.Series(sumstats['A2']), pd.Series(bim_df[:,4]), pd.Series(bim_df[:,5]))
 
-    sumstats.loc[qc['flip'], 'BETA'] = sumstats.loc[qc['flip'], 'BETA']  * -1
+    sumstats.loc[qc['flip'], 'BETA'] = sumstats.loc[qc['flip'], 'BETA'] * -1
     sumstats.loc[qc['flip'], 'POSTERIOR'] = sumstats.loc[qc['flip'], 'POSTERIOR'] * -1
     sumstats.loc[~qc['keep'],'BETA'] = 0
     sumstats.loc[~qc['keep'], 'POSTERIOR'] = 0

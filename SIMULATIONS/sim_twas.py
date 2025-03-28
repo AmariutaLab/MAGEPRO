@@ -15,6 +15,8 @@
 from pandas_plink import read_plink
 import numpy as np
 import scipy.linalg as linalg
+from scipy.stats import invgamma
+from scipy.stats import norm
 import pandas as pd
 import subprocess
 import os
@@ -22,11 +24,7 @@ import argparse
 import gzip
 import sys
 import statsmodels.api as sm
-from sklearn import linear_model as lm
-from sklearn.linear_model import LinearRegression
 from numpy.linalg import multi_dot as mdot
-from sklearn.model_selection import KFold
-from sklearn.metrics import r2_score
 from scipy.special import ndtr
 from magepro_simulations_functions import (magepro_cv, top1_cv,
                                            fit_sparse_regularized_lm,
@@ -38,13 +36,14 @@ NUMTARGET_LIST = [300]
 WINDOW = 500000
 
 NCAUSAL_ARR = [1] # number of causal SNPs for eQTL file
-EQTL_H2_ARR = [0.01] # True heritability value
-PHEN_VAR_GENE_COMPONENT = [0.1]
+EQTL_H2_ARR = [0.01, 0.05, 0.1] # True heritability value
+PHEN_VAR_GENE_COMPONENT = [0, 0.0001, 0.001, 0.01]
+CORRELATIONS_GE = [0.2, 0.8]
+GWAS_SAMPLE_SIZE = [20000, 100000, 600000]
 
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
-DEFAULT_NUM_OF_PEOPLE_GWAS = 100000
 SEP = "\t"
-OUTPUT_COLUMNS = f"""GENE{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}METRO_statistic{SEP}METRO_PVAL\n"""
+OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR\n"""
 
 def get_ld(prefix):
     # return cholesky L
@@ -239,30 +238,29 @@ def pick_rand_gene(plink_path, geno_prefix_path_list, random_genes_folder):
         return output_list, str(chr), min_snps
 
 
-def get_gcta_hsq(geno, gexpr, out, gcta):
+def get_gcta_hsq(geno, gexpr, output_path, gcta):
     '''
         Calculates heritability estimates using GCTA
         :geno: numpy.ndarray n x p centered/scaled genotype matrix
         :gexpr: (numpy.ndarray, float) simulated phenotype, sd of Y
-        :out: output folder
+        :output_path: path to output file
         :gcta: path to gcta binary file
 
         :returns: hsq, hsq_se, hsq_p - all floats
     '''
     nindv, nsnp = geno.shape
     grm = np.dot(geno, geno.T) / nsnp
-    output_path = os.path.join(out)
     write_pheno(gexpr, output_path)
     write_grm(grm, nsnp, output_path)
     run_gcta(gcta, output_path)
-    clean_up(out)
-    hsq_f = '{}.hsq'.format(out)
+    clean_up(output_path)
+    hsq_f = f'{output_path}.hsq'
     if os.path.exists(hsq_f):
         hsq_out = pd.read_table(hsq_f)
         hsq = hsq_out['Variance'][0]
         hsq_se = hsq_out['SE'][0]
         hsq_p = hsq_out['Variance'][8]
-        command = 'rm {}'.format(hsq_f)
+        command = f'rm {hsq_f}'
         subprocess.run(command.split())
         return hsq, hsq_se, hsq_p
     else:
@@ -297,9 +295,9 @@ def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
         std_errs.append(results.bse[1])
     sumstats = pd.DataFrame({
         'Gene': os.path.basename(gene),
-        'SNP': bim['snp'], 
-        'A1': bim['a0'],   
-        'A2': bim['a1'],   
+        'SNP': bim['snp'],
+        'A1': bim['a0'],
+        'A2': bim['a1'],
         'BETA': betas,
         'SE': std_errs,
         'P': pvals
@@ -323,9 +321,11 @@ def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
 
 
 def clean_up(out):
-    command = 'rm {}.grm.gz'.format(out)
+    command = f'rm {out}.grm.gz'
     subprocess.run(command.split())
-    command = 'rm {}.grm.id'.format(out)
+    command = f'rm {out}.grm.id'
+    subprocess.run(command.split())
+    command = f'rm {out}.phen'
     subprocess.run(command.split())
 
 
@@ -381,6 +381,48 @@ def sim_gwas(L, ngwas, beta, h2ge):
     return gwas
 
 
+def sim_gwasfast(L, ngwas, beta, h2ge):
+    """
+    Simulate a GWAS using `ngwas` individuals such that genetics explain `h2ge` of phenotype.
+        This function differs from `sim_gwas` in that it samples GWAS summary statistics directly
+        Using an MVN approximation, rather than generating genotype, phenotype, and performing
+        a marginal regression for each simulated variant. Runtime should be `O(p^2)` where
+        `p` is number of variants.
+
+    :param L: numpy.ndarray lower cholesky factor of the p x p LD matrix for the population
+    :param ngwas: int the number of GWAS genotypes to sample
+    :param b_qtls: numpy.ndarray latent eQTL effects for the causal gene
+    :param h2ge: float the amount of phenotypic variance explained by genetic component of gene expression
+
+    :return: (pandas.DataFrame) estimated GWAS beta and standard error
+
+    """
+    n_snps = L.shape[0]
+
+    s2g = compute_s2g(L, beta)
+
+    if h2ge > 0:
+        s2e = s2g * ((1.0 / h2ge) - 1)
+    else:
+        s2e = 1.0  # var[y]; could be diff from 1, but here we assume 1
+
+    dof = ngwas - 1
+    tau2 = s2e / ngwas
+    se_gwas = np.sqrt(invgamma.rvs(a=0.5 * dof, scale=0.5 * dof * tau2, size=n_snps))
+    DL = se_gwas[:, np.newaxis] * L
+
+    beta_adj = mdot([DL, L.T, (beta / se_gwas)])  # D @ L @ Lt @ inv(D) @ beta
+
+    # b_gwas ~ N(D @ L @ L.t inv(D) @ beta, D @ L @ Lt @ D), but fast
+    b_gwas = beta_adj + np.dot(DL, np.random.normal(size=(n_snps,)))
+    Z = b_gwas / se_gwas
+    pvals = 2 * norm.sf(abs(Z))
+    gwas = pd.DataFrame({"beta": b_gwas, "se": se_gwas, "pval": pvals})
+
+    return gwas
+
+
+
 def regress(Z, pheno):
     """
     Perform a marginal linear regression for each snp on the phenotype.
@@ -410,16 +452,16 @@ def regress(Z, pheno):
     return gwas
 
 
-def sim_eqtl(Z_eqtl, gexpr, tmpdir): 
+def sim_eqtl(Z_eqtl, gexpr, tmp_path): 
     """
     Simulate an eQTL study.
     :param Z_eqtl: simulated genotypes
-    :param tmpdir: name of temporary directory
+    :param tmp_path: name of temporary path
     :return:  (numpy.ndarray x 6) Arrays of best lasso penalty, eqtl effect sizes, heritability, cross validation accuracies, simulated ge
     """
     penalty, coef, r2 = fit_sparse_regularized_lm(Z_eqtl, gexpr, 'lasso')
     if r2>0:
-        h2g, hsq_se, hsq_p = get_gcta_hsq(Z_eqtl, gexpr, tmpdir, "/expanse/lustre/projects/ddp412/kakamatsu/fusion_twas-master/gcta_nr_robust")
+        h2g, hsq_se, hsq_p = get_gcta_hsq(Z_eqtl, gexpr, tmp_path, "/expanse/lustre/projects/ddp412/kakamatsu/fusion_twas-master/gcta_nr_robust")
     else:
         h2g=0
         hsq_se=10
@@ -431,7 +473,7 @@ def run_magepro(target_gene,
                 Z_eqtl,
                 b_qtls,
                 gexpr,
-                tmpdir,
+                tmp_path,
                 pop,
                 num_people,
                 sumstats_files_external,
@@ -441,7 +483,7 @@ def run_magepro(target_gene,
         Z_eqtl - simulated genotypes for target gene
         b_qtls - simulated latent effect sizes
         gexpr -  simulated gene expression. Used to fit_sparse_regularized_lm
-        tmpdir - temporary derictory
+        tmp_path - path to where temporary file will be stored
         pop - target population
         num_people - number of people in target population
         sumstats_files_external - paths to summary statistics files
@@ -455,7 +497,7 @@ def run_magepro(target_gene,
     bim = np.array(bim)
 
     b_qtls = np.reshape(b_qtls.T, (bim.shape[0], 1))
-    best_penalty, coef, h2g, hsq_p, r2all = sim_eqtl(Z_eqtl, gexpr, tmpdir)
+    best_penalty, coef, h2g, hsq_p, r2all = sim_eqtl(Z_eqtl, gexpr, tmp_path)
 
     if np.all(coef == 0):
         print("using top1 backup")
@@ -466,9 +508,9 @@ def run_magepro(target_gene,
     for i in range(0, len(sumstats_files_external)):
         varname = pops_external[i] + 'weights'
         weights, pips = load_process_sumstats(sumstats_files_external[i], bim, sep=" ")
-        # if SuSiE didn't converge, we cannot run magepro
+        # if SuSiE didn't converge, we can't use that as input for RIDGE
         if weights[0] == float('-inf'):
-            return float('-inf'), -1, np.array(-1), -1, np.array(-1), -1
+            continue
         sumstats_weights[varname] = weights
         # num_causal_susie += len([index for index in CAUSAL if pips[index] >= 0.95])
     magepro_r2, magepro_coef = magepro_cv(num_people, Z_eqtl, gexpr, sumstats_weights, best_penalty, m="lasso")
@@ -502,10 +544,16 @@ def run_metro(eqtl_paths, eqtl_corr_paths, eqtl_samplesizes, gwas_file, ngwas, o
                     '-n', ngwas,
                     '-o', out])
 
-    stats = pd.read_csv(out + "_stats.txt", sep = '\t')
-    betas = pd.read_csv(out + "_betas.txt", sep = '\t')
+    output = ['NaN', 'NaN', 'NaN', 'NaN']
 
-    return (stats['a'], stats['p'], betas[betas].values)
+    if os.path.exists(out + "_stats.txt"):
+        stats = pd.read_csv(out + "_stats.txt", sep = '\t')
+        output[0], output[1], output[2] = stats['a'].values[0], stats['p'].values[0], stats['lrt'].values[0]
+    if os.path.exists(out + "_betas.txt"):
+        betas = pd.read_csv(out + "_betas.txt", sep = '\t')
+        output[3] = betas['betas'].values
+
+    return output
 
 def compute_twas(gwas, coef, LD):
     """
@@ -598,7 +646,8 @@ def main():
         print(f'LD_path_directory {curr_pop}', ld_path_directory)
         create_directory(ld_path_directory)
     
-    for i in range(100):
+    for i in range(5):
+        print("Picking random gene number:", i)
         # pick random gene available in all populations
         random_gene_list, chr, min_num_snps = pick_rand_gene(
                                               args.plink_path,
@@ -611,130 +660,160 @@ def main():
                     return 
                 index_causals = np.random.choice([i for i in range(0, min_num_snps)], 
                                                  NCAUSAL, replace=False)
-
                 for H2GE in PHEN_VAR_GENE_COMPONENT:
                     for EQTL_H2 in EQTL_H2_ARR:
-                        simulated_genotypes = dict()
-                        simulated_betas = dict()
-                        simulated_gexprs = dict()
-                        sumstats_files_external = []
-                        marginal_sumstats_files = [] # for METRO, need marginal eQTL z scores per snp for each population
-                        eqtl_snp_correlation_files = [] # for METRO, need snp correlation matrices for each population
-                        eqtl_samplesizes = [] # for METRO, need sample sizes for each summary statistic 
 
-                        effects = correlated_effects_cholesky(EQTL_H2,
-                                                              EQTL_H2,
-                                                              EQTL_H2,
-                                                              corr=0.8,
-                                                              nums=NCAUSAL)
-                        # effects_df is a DataFrame, where columns are
-                        # populations, rows represent SNP weights for causal 
-                        # SNPs
-                        effects_df = pd.DataFrame(effects)
-                        effects_df.columns = POPS_LIST
+                        for CORRELATION in CORRELATIONS_GE:
+                            simulated_genotypes = dict()
+                            simulated_betas = dict()
+                            simulated_gexprs = dict()
+                            simulated_ld = dict()
+                            sumstats_files_external = []
+                            marginal_sumstats_files = [] # for METRO, need marginal eQTL z scores per snp for each population
+                            eqtl_snp_correlation_files = [] # for METRO, need snp correlation matrices for each population
+                            eqtl_samplesizes = [] # for METRO, need sample sizes for each summary statistic 
 
-                        ### We use this for loop to create summary statistics
-                        for i, (rand_gene, geno_prefix, curr_pop) in enumerate(zip(random_gene_list, GENO_PREFIX_LIST, POPS_LIST)):
-                            # 1. Simulate LD, Simulate Genotypes
-                            print("Simlate LD and Genotypes")
-                            bim, L = get_ld(rand_gene)
-                            CURR_NUM_PEOPLE = DEFAULT_NUM_OF_PEOPLE_EQTL
+                            effects = correlated_effects_cholesky(EQTL_H2,
+                                                                EQTL_H2,
+                                                                EQTL_H2,
+                                                                corr=CORRELATION,
+                                                                nums=NCAUSAL)
+                            # effects_df is a DataFrame, where columns are
+                            # populations, rows represent SNP weights for causal 
+                            # SNPs
+                            effects_df = pd.DataFrame(effects)
+                            effects_df.columns = POPS_LIST
 
-                            # target population is always first
-                            if i == 0:
-                                CURR_NUM_PEOPLE = NUMTARGET
+                            ### We use this for loop to create summary statistics
+                            for i, (rand_gene, geno_prefix, curr_pop) in enumerate(zip(random_gene_list, GENO_PREFIX_LIST, POPS_LIST)):
+                                # 1. Simulate LD, Simulate Genotypes
+                                print("Simlate LD and Genotypes")
+                                bim, L = get_ld(rand_gene)
+                                CURR_NUM_PEOPLE = DEFAULT_NUM_OF_PEOPLE_EQTL
 
-                            Z = sim_geno(L, CURR_NUM_PEOPLE)
-                            # 2. Simulate Beta, Simulate Gene Expression
-                            print("Simulate Latent Betas and Gene Expression")
-                            beta = create_betas(effects=effects_df[curr_pop].values,
-                                             num_causal=NCAUSAL,
-                                             num_snps=L.shape[0],
-                                             causal_index=index_causals)
-                            gexpr = sim_trait(np.dot(Z, beta), EQTL_H2)[0]
-                            # 3. Build SuSiE summary statistics
-                            curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.3f}_{CURR_NUM_PEOPLE}'
-                            print(f"Build SuSiE summary statistics for {curr_gene}")
-                            sumstats_path = os.path.join(sumstats_path_base, curr_pop)
-                            ld_path = os.path.join(sumstats_path_base, curr_pop)
+                                # target population is always first
+                                if i == 0:
+                                    CURR_NUM_PEOPLE = NUMTARGET
 
-                            simulated_genotypes[curr_pop] = Z
-                            simulated_betas[curr_pop] = beta
-                            simulated_gexprs[curr_pop] = gexpr
+                                Z = sim_geno(L, CURR_NUM_PEOPLE)
+                                # 2. Simulate Beta, Simulate Gene Expression
+                                print("Simulate Latent Betas and Gene Expression")
+                                beta = create_betas(effects=effects_df[curr_pop].values,
+                                                num_causal=NCAUSAL,
+                                                num_snps=L.shape[0],
+                                                causal_index=index_causals)
+                                gexpr = sim_trait(np.dot(Z, beta), EQTL_H2)[0]
+                                # 3. Build SuSiE summary statistics
+                                curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{CURR_NUM_PEOPLE}'
+                                print(f"Build SuSiE summary statistics for {curr_gene}")
+                                sumstats_path = os.path.join(sumstats_path_base, curr_pop)
+                                ld_path = os.path.join(sumstats_path_base, curr_pop)
 
-                            # we run build_susie_sumstats for both target and external population 
+                                simulated_genotypes[curr_pop] = Z
+                                simulated_betas[curr_pop] = beta
+                                simulated_gexprs[curr_pop] = gexpr
+                                simulated_ld[curr_pop] = L
+
+                                # we run build_susie_sumstats for both target and external population 
                                 # for target, we do not need to fine-mapping results, but the marginal eqtl z scores and snp correlation matrices are inputs to metro
-                            sumstat_output_file, marginal_sumstats_file, snp_corr_plink_file = build_susie_sumstats(
-                                bim=bim,
-                                geno=Z,
-                                gexpr=gexpr,
-                                sumstats_path=sumstats_path,
-                                ld_path=ld_path,
-                                gene=curr_gene,
-                                gene_pref=geno_prefix + chr,
-                                plink_path=args.plink_path,
-                                cNUM_PEOPLE=CURR_NUM_PEOPLE
+                                sumstat_output_file, marginal_sumstats_file, snp_corr_plink_file = build_susie_sumstats(
+                                    bim=bim,
+                                    geno=Z,
+                                    gexpr=gexpr,
+                                    sumstats_path=sumstats_path,
+                                    ld_path=ld_path,
+                                    gene=curr_gene,
+                                    gene_pref=geno_prefix + chr,
+                                    plink_path=args.plink_path,
+                                    cNUM_PEOPLE=CURR_NUM_PEOPLE
+                                )
+                                if i != 0: # for target population, we do not need the fine-mapping results 
+                                    sumstats_files_external.append(sumstat_output_file)
+
+                                marginal_sumstats_files.append(marginal_sumstats_file)
+                                eqtl_snp_correlation_files.append(snp_corr_plink_file)
+                                eqtl_samplesizes.append(CURR_NUM_PEOPLE)
+
+                            # 4. Run MAGEPRO; target population is first
+                            print("Run MAGEPRO")
+                            curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}'
+
+                            gcta_output_path = os.path.join(args.tmpdir, curr_gene)
+                            GCTA_h2, h2_pval, lasso_coef, lasso_r2, magepro_coef, magepro_r2 = run_magepro(
+                                target_gene=random_gene_list[0],
+                                Z_eqtl=simulated_genotypes[POPS_LIST[0]],
+                                b_qtls=simulated_betas[POPS_LIST[0]],
+                                gexpr=simulated_gexprs[POPS_LIST[0]],
+                                tmp_path=gcta_output_path,
+                                pop=POPS_LIST[0],
+                                num_people=NUMTARGET,
+                                sumstats_files_external=sumstats_files_external,
+                                pops_external=POPS_LIST[1::]    # here we just slice
                             )
-                            if i != 0: # for target population, we do not need the fine-mapping results 
-                                sumstats_files_external.append(sumstat_output_file)
-                            marginal_sumstats_files.append(marginal_sumstats_file)
-                            eqtl_snp_correlation_files.append(snp_corr_plink_file)
-                            eqtl_samplesizes.append(CURR_NUM_PEOPLE)
-                        # 4. Run MAGEPRO; target population is first
-                        print("Run MAGEPRO")
-                        GCTA_h2, h2_pval, lasso_coef, lasso_r2, magepro_coef, magepro_r2 = run_magepro(
-                            target_gene=random_gene_list[0],
-                            Z_eqtl=simulated_genotypes[POPS_LIST[0]],
-                            b_qtls=simulated_betas[POPS_LIST[0]],
-                            gexpr=simulated_gexprs[POPS_LIST[0]],
-                            tmpdir=args.tmpdir,
-                            pop=POPS_LIST[0],
-                            num_people=NUMTARGET,
-                            sumstats_files_external=sumstats_files_external,
-                            pops_external=POPS_LIST[1::]    # here we just slice
-                        )
-                        if GCTA_h2 == float('-inf'):
-                            print("SuSiE summary statistics were not calculated properly for this gene.")
-                            print("Debug information:")
-                            print("Current genes:", random_gene_list)
-                            print("Summary statistics:", sumstats_files_external)
-                            continue
+                            if GCTA_h2 == float('-inf'):
+                                print("SuSiE summary statistics were not calculated properly for this gene.")
+                                print("Debug information:")
+                                print("Current genes:", random_gene_list)
+                                print("Summary statistics:", sumstats_files_external)
+                                continue
 
-                        # 5. Perform TWAS
-                        print("Perform TWAS")
-                        SIGN = np.random.choice([-1, 1])
-                        alpha = np.sqrt(H2GE / EQTL_H2) * SIGN
-                        gwas = sim_gwas(L, DEFAULT_NUM_OF_PEOPLE_GWAS,
-                                        simulated_betas[POPS_LIST[0]] * alpha,
-                                        H2GE) # ERROR: L here should be the LD correlation matrix for the target population
-                                                # this looks like the LD correlation matrix for the last population in  POPS_LIST
+                            for NUM_GWAS in GWAS_SAMPLE_SIZE:
+                                # 5. Perform TWAS
+                                print("Perform TWAS. GWAS NUM:", NUM_GWAS)
+                                SIGN = np.random.choice([-1, 1])
+                                alpha = np.sqrt(H2GE / EQTL_H2) * SIGN
+                                if NUM_GWAS < 100000:
+                                    gwas = sim_gwas(simulated_ld[POPS_LIST[0]],
+                                                    NUM_GWAS,
+                                                    simulated_betas[POPS_LIST[0]] * alpha,
+                                                    H2GE)
+                                else:
+                                    gwas = sim_gwasfast(simulated_ld[POPS_LIST[0]],
+                                                    NUM_GWAS,
+                                                    simulated_betas[POPS_LIST[0]] * alpha,
+                                                    H2GE)
 
-                        LD_test = np.dot(L, L.T)
-                        z_twas_lasso, p_twas_lasso = compute_twas(
-                                                                gwas,
-                                                                lasso_coef,
-                                                                LD_test)
-                        z_twas_magepro, p_twas_magepro = compute_twas(gwas,
-                                                                    magepro_coef,
-                                                                    LD_test)
+                                LD_test = np.dot(simulated_ld[POPS_LIST[0]],
+                                                simulated_ld[POPS_LIST[0]].T)
+                                z_twas_lasso, p_twas_lasso = compute_twas(
+                                                                        gwas,
+                                                                        lasso_coef,
+                                                                        LD_test)
 
-                        # 6. Run METRO
-                        print('Preparing inputs to METRO')
-                        # compute marginal z scores
-                        eqtl_marginal_sumstats_paths = ",".join(marginal_sumstats_files)
-                        eqtl_snp_corr_paths = ",".join(eqtl_snp_correlation_files)
-                        eqtl_samplesizes = ",".join([str(ss) for ss in eqtl_samplesizes])
-                        curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.3f}'
-                        gwas_file = os.path.join(metro_path_base, curr_gene + '_gwas.txt')
-                        gwas.to_csv(gwas_file, header = True, sep = '\t', index = False)
-                        metro_output_path = os.path.join(metro_path_base, curr_gene + '_metro.txt')
-                        print('Running METRO')
-                        metro_statistic, metro_p, metro_betas = run_metro(eqtl_marginal_sumstats_paths, eqtl_snp_corr_paths, eqtl_samplesizes, gwas_file, str(DEFAULT_NUM_OF_PEOPLE_GWAS), metro_output_path)
+                                z_twas_magepro, p_twas_magepro = compute_twas(
+                                                                        gwas,
+                                                                        magepro_coef,
+                                                                        LD_test)
 
-                        target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.3f}_{NUMTARGET}'
+                                # 6. Run METRO
+                                print('Preparing inputs to METRO')
+                                # compute marginal z scores
+                                eqtl_marginal_sumstats_paths = ",".join(marginal_sumstats_files)
+                                eqtl_snp_corr_paths = ",".join(eqtl_snp_correlation_files)
+                                eqtl_samplesizes = ",".join([str(ss) for ss in eqtl_samplesizes])
+                                gwas_file = os.path.join(metro_path_base, curr_gene + '_gwas.txt')
+                                gwas.to_csv(gwas_file, header = True, sep = '\t', index = False)
+                                metro_output_path = os.path.join(metro_path_base, curr_gene + '_metro.txt')
+                                print('Running METRO')
+                                curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUM_GWAS}'
+                                metro_alpha, metro_p, metro_lrt, metro_betas = run_metro(eqtl_marginal_sumstats_paths,
+                                                                                eqtl_snp_corr_paths,
+                                                                                eqtl_samplesizes,
+                                                                                gwas_file,
+                                                                                str(NUM_GWAS),
+                                                                                metro_output_path)
+                                if len(metro_betas) == 3 and metro_betas == 'NaN':
+                                    magepro_metro_corr = 'NaN'
+                                    print("Metro beta is NaN. Can't calculate correlation coefficient.")
+                                else:
+                                    magepro_metro_corr = np.corrcoef(magepro_coef, metro_betas)[0, 1]
+                                
+                                magepro_lasso_corr = np.corrcoef(magepro_coef, lasso_coef)[0, 1]
 
-                        with open(args.out, "a") as f:
-                                f.write(f"""{target_gene}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{metro_statistic}{SEP}{metro_p}\n""")
+                                target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}_{NUM_GWAS}'
+                                with open(args.out, "a") as f:
+                                        f.write(f"""{target_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}\n""")
+
 
         # clean up
         # command = f'rm -rf {rgenes}'
