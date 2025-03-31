@@ -1,7 +1,9 @@
 plink_path=$1
 gcta_path=$2
+path_to_magepro=$3
 
 Rscript RUN_MAGEPRO_PIPELINE.R --bfile ../DATA/MAGEPRO_data/GEUVADIS_EUR_genotypes/chr/GEUVADIS_EUR_chr \
+--magepro_path $path_to_magepro \
 --ge ../DATA/MAGEPRO_data/GEUVADIS_normalized_gene_expression_EUR.bed.gz \
 --covar ../DATA/MAGEPRO_data/GEUVADIS_EUR_covariates.txt \
 --out ../SAMPLE_FILES/OUTPUT \

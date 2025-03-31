@@ -125,7 +125,7 @@ mkdir ../SAMPLE_FILES/SCRATCH
 mkdir ../SAMPLE_FILES/INTERMED
 chmod +x tutorial_run.sh
 chmod +x MAGEPRO_PIPELINE/5_RunJobs.sh
-bash tutorial_run.sh 'path to plink' 'path to gcta'  
+bash tutorial_run.sh 'path to plink' 'path to gcta' 'path to magepro'
 ```
 7. Check outputs, see “MAGEPRO/PROCESS_RESULTS” to compile results across genes into a table  
 ```
