@@ -510,6 +510,8 @@ def run_magepro(target_gene,
         weights, pips = load_process_sumstats(sumstats_files_external[i], bim, sep=" ")
         # if SuSiE didn't converge, we can't use that as input for RIDGE
         if weights[0] == float('-inf'):
+            print("Warning: Fine-mapping didn't converge for",
+                  sumstats_files_external[i])
             continue
         sumstats_weights[varname] = weights
         # num_causal_susie += len([index for index in CAUSAL if pips[index] >= 0.95])
@@ -646,8 +648,8 @@ def main():
         print(f'LD_path_directory {curr_pop}', ld_path_directory)
         create_directory(ld_path_directory)
     
-    for i in range(5):
-        print("Picking random gene number:", i)
+    for i in range(1):
+        print("Picking random gene. Number:", i)
         # pick random gene available in all populations
         random_gene_list, chr, min_num_snps = pick_rand_gene(
                                               args.plink_path,
@@ -662,7 +664,6 @@ def main():
                                                  NCAUSAL, replace=False)
                 for H2GE in PHEN_VAR_GENE_COMPONENT:
                     for EQTL_H2 in EQTL_H2_ARR:
-
                         for CORRELATION in CORRELATIONS_GE:
                             simulated_genotypes = dict()
                             simulated_betas = dict()
@@ -735,10 +736,10 @@ def main():
                                 eqtl_samplesizes.append(CURR_NUM_PEOPLE)
 
                             # 4. Run MAGEPRO; target population is first
-                            print("Run MAGEPRO")
-                            curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}'
-
+                            curr_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}'
                             gcta_output_path = os.path.join(args.tmpdir, curr_gene)
+
+                            print("Run MAGEPRO for", curr_gene)
                             GCTA_h2, h2_pval, lasso_coef, lasso_r2, magepro_coef, magepro_r2 = run_magepro(
                                 target_gene=random_gene_list[0],
                                 Z_eqtl=simulated_genotypes[POPS_LIST[0]],
@@ -748,7 +749,7 @@ def main():
                                 pop=POPS_LIST[0],
                                 num_people=NUMTARGET,
                                 sumstats_files_external=sumstats_files_external,
-                                pops_external=POPS_LIST[1::]    # here we just slice
+                                pops_external=POPS_LIST[1::]  # here we just slice
                             )
                             if GCTA_h2 == float('-inf'):
                                 print("SuSiE summary statistics were not calculated properly for this gene.")
@@ -786,19 +787,21 @@ def main():
                                                                         LD_test)
 
                                 # 6. Run METRO
-                                print('Preparing inputs to METRO')
+                                print('Preparing inputs for METRO')
                                 # compute marginal z scores
+                                curr_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUM_GWAS}'
                                 eqtl_marginal_sumstats_paths = ",".join(marginal_sumstats_files)
                                 eqtl_snp_corr_paths = ",".join(eqtl_snp_correlation_files)
-                                eqtl_samplesizes = ",".join([str(ss) for ss in eqtl_samplesizes])
+                                eqtl_samplesizes_joined = ",".join([str(ss) for ss in eqtl_samplesizes])
                                 gwas_file = os.path.join(metro_path_base, curr_gene + '_gwas.txt')
                                 gwas.to_csv(gwas_file, header = True, sep = '\t', index = False)
-                                metro_output_path = os.path.join(metro_path_base, curr_gene + '_metro.txt')
+                                # in the run_metro.R we add "_betas" or "_stat"
+                                metro_output_path = os.path.join(metro_path_base, curr_gene)
                                 print('Running METRO')
-                                curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUM_GWAS}'
+                                
                                 metro_alpha, metro_p, metro_lrt, metro_betas = run_metro(eqtl_marginal_sumstats_paths,
                                                                                 eqtl_snp_corr_paths,
-                                                                                eqtl_samplesizes,
+                                                                                eqtl_samplesizes_joined,
                                                                                 gwas_file,
                                                                                 str(NUM_GWAS),
                                                                                 metro_output_path)
@@ -811,10 +814,10 @@ def main():
                                 magepro_lasso_corr = np.corrcoef(magepro_coef, lasso_coef)[0, 1]
 
                                 target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}_{NUM_GWAS}'
+                                print('Writing row for:', target_gene)
                                 with open(args.out, "a") as f:
                                         f.write(f"""{target_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}\n""")
-
-
+                                # return
         # clean up
         # command = f'rm -rf {rgenes}'
         # subprocess.run(command.split())

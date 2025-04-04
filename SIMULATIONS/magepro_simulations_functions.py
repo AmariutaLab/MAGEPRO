@@ -343,11 +343,11 @@ def allele_qc(a1, a2, ref1, ref2):
 def load_process_sumstats(file_sumstats, bim_df, sep="\t"):
     # LOAD AND PROCESS SUMMARY STATISTICS (SUSIE POSTERIOR) FOR MAGEPRO 
 
+    # If susie couldn't perform fine-mapping, we return.
+    if os.path.exists(file_sumstats) == False:
+        return np.array(float('-inf')), np.array(float('-inf'))
     # --- LOAD IN SUM STATS
     sumstats = pd.read_csv(file_sumstats, sep=sep)
-    # If susie couldn't perform fine-mapping, we return.
-    if 'POSTERIOR' not in sumstats.columns and 'PIP' not in sumstats.columns:
-        return np.array(float('-inf')), np.array(float('-inf'))
 
     # --- get SNPs in common between bim and sumstats
     snps_bim = pd.DataFrame(bim_df[:, 1], columns=['SNP'])
