@@ -42,7 +42,8 @@ option_list = list(
 	      SuSiE_IMPACT = sum of single effects regression with IMPACT scores as priors \n
 	      PRSCSx = PRS-CSx multi-ancestry PRS method \n 
 	      MAGEPRO_fullsumstats = magepro model, no sparsity \n
-	      MAGEPRO = magepro model"),
+	      MAGEPRO = magepro model \n 
+        MAGEPRO_localx = magepro with local genotype PC interactions"),
   make_option("--ss", action="store", default=NA, type='character',
               help="Comma-separated list of sample sizes of sumstats (in the same order)"), 
   make_option("--PATH_plink", action="store", default="plink", type='character',
@@ -92,10 +93,12 @@ option_list = list(
               help="Path to susie output directory [required if using MAGEPRO]"), 
   make_option("--skip_susie", action="store_true", default=FALSE,
               help="Boolean to skip SuSiE preprocessing. This assumes summary statistics in sumstats_dir have columns 8/9/10 with PIP/POSTERIOR/CS from susie"),
-  make_option("--regress_pcs", type = "logical", default=FALSE,
-              help="Boolean, whether to regress PCs out of genotypes or not. [optional]"),
-  make_option("--num_pcs", action="store", default=5, type='numeric',
-              help="Numeric, specifies number of PCs to regress out if regress_pcs is set to TRUE. [optional]"),
+  make_option("--regress_localpcs", type = "logical", default=FALSE,
+              help="Boolean, whether to recalculate genotype PCs per gene. [optional] \n
+              When this is true, --num_localpcs genotype PCs are recomputed for every gene and appended to the --covar. \n
+              Therefore, if --covar includes global PCs, both global and local genotype PCs will be used. If you only want local, remove the global PCs from the --covar file"),
+  make_option("--num_localpcs", action="store", default=5, type='numeric',
+              help="Numeric, specifies number of local PCs to use as covars if regress_localpcs is set to TRUE. [optional]"),
   make_option("--n_threads", action="store", default=1,
               help="Integer value representing how many threads to be used by MAGEPRO_PIPELINE/5_RunJobs.sh")
 )
@@ -212,8 +215,8 @@ if (opt$batch) {
     opt$crossval, opt$verbose, opt$noclean, opt$save_hsq, opt$ldref_pt,
     opt$prune_r2, opt$threshold_p, opt$ldref_PRSCSx, opt$dir_PRSCSx,
     opt$phi_shrinkage_PRSCSx, opt$pops, opt$impact_path, opt$ldref_dir,
-    opt$ldrefs, opt$in_sample, opt$out_susie, opt$skip_susie, opt$regress_pcs,
-    opt$num_pcs, opt$n_threads, sep = " ") # you may have to edit this script "5_RunJobs.sh" to suit your HPC cluster
+    opt$ldrefs, opt$in_sample, opt$out_susie, opt$skip_susie, opt$regress_localpcs,
+    opt$num_localpcs, opt$n_threads, sep = " ") # you may have to edit this script "5_RunJobs.sh" to suit your HPC cluster
     system( arg , ignore.stdout=SYS_PRINT, ignore.stderr=SYS_PRINT )
   }
 } else {
@@ -243,8 +246,8 @@ if (opt$batch) {
         opt$crossval, opt$verbose, opt$noclean, opt$save_hsq, opt$ldref_pt,
         opt$prune_r2, opt$threshold_p, opt$ldref_PRSCSx, opt$dir_PRSCSx,
         opt$phi_shrinkage_PRSCSx, opt$pops, opt$impact_path, opt$ldref_dir,
-        opt$ldrefs, opt$in_sample, opt$out_susie, opt$skip_susie, opt$regress_pcs,
-        opt$num_pcs, opt$n_threads, current_datetime,
+        opt$ldrefs, opt$in_sample, opt$out_susie, opt$skip_susie, opt$regress_localpcs,
+        opt$num_localpcs, opt$n_threads, current_datetime,
         paste("> ", output_file, " 2> ", error_file, sep = ""),
         sep = " ")
   system(arg , ignore.stdout=SYS_PRINT, ignore.stderr=SYS_PRINT)

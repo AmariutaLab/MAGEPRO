@@ -32,7 +32,8 @@ option_list = list(
 	      SuSiE_IMPACT = sum of single effect regression with IMPACT scores as prior on SNP selection \n
 	      PRSCSx = PRS-CSx multi-ancestry PRS method \n 
 	      MAGEPRO_fullsumstats = magepro model, no sparsity \n
-	      MAGEPRO = magepro model"),
+	      MAGEPRO = magepro model \n 
+          MAGEPRO_localx = magepro with local genotype PC interactions"),
   make_option("--ss", action="store", default=NA, type='character',
               help="Comma-separated list of sample sizes of sumstats (in the same order)"), 
   make_option("--pheno", action="store", default=NA, type='character',
@@ -86,12 +87,14 @@ option_list = list(
               help="Path to susie output directory [required if using MAGEPRO and not skipping susie]"),
   make_option("--skip_susie", action="store_true", default=FALSE,
               help="Boolean to skip SuSiE preprocessing. This assumes summary statistics in sumstats_dir have columns 8/9/10 with PIP/POSTERIOR/CS from susie"),
-  make_option("--regress_pcs", action="store_true", default=FALSE,
-              help="Boolean, whether to regress PCs out of genotypes or not."),
-  make_option("--pcs_eigenvec", action="store", default=NA, type="character",
-              help="Path to file that stores eigenvectors of PCs."),
-  make_option("--num_pcs", action="store", default=5, type='numeric',
-              help="Numeric, specifies number of PCs to regress out if regress_pcs is set to TRUE.")
+  make_option("--regress_localpcs", action="store_true", default=FALSE,
+              help="Boolean, whether to recalculate genotype PCs per gene. [optional] \n
+              When this is true, --num_localpcs genotype PCs are recomputed for every gene and appended to the --covar. \n
+              Therefore, if --covar includes global PCs, both global and local genotype PCs will be used. If you only want local, remove the global PCs from the --covar file"),
+  make_option("--localpcs_eigenvec", action="store", default=NA, type="character",
+              help="Path to file that stores eigenvectors of localPCs."),
+  make_option("--num_localpcs", action="store", default=5, type='numeric',
+              help="Numeric, specifies number of local PCs to regress out if regress_localpcs is set to TRUE.")
 	
 )
 
@@ -130,7 +133,7 @@ if (!is.na(opt$gene)){
 
 #models to use
 model <- strsplit(opt$models, ",", fixed = TRUE)[[1]]
-if ( sum(! model %in% c("SINGLE", "META", "PT", "SuSiE", "SuSiE_IMPACT","PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO")) > 0 | length(model) > 8 ){
+if ( sum(! model %in% c("SINGLE", "META", "PT", "SuSiE", "SuSiE_IMPACT","PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO", "MAGEPRO_localx")) > 0 | length(model) > 9 ){
 	cat( "ERROR: Please input valid models \n" , sep='', file=stderr() )
     cleanup()
     q()
@@ -138,7 +141,7 @@ if ( sum(! model %in% c("SINGLE", "META", "PT", "SuSiE", "SuSiE_IMPACT","PRSCSx"
 
 if (opt$verbose >= 1) cat("### USING THE FOLLOWING MODELS:", opt$models, "\n")
 
-order <- c("SINGLE","META", "PT", "SuSiE", "SuSiE_IMPACT", "PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO")
+order <- c("SINGLE","META", "PT", "SuSiE", "SuSiE_IMPACT", "PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO", "MAGEPRO_localx")
 types <- model[match(order, model)]
 types <- unique(types[!is.na(types)])
 
@@ -172,7 +175,7 @@ if ( ! is.na(opt$sumstats)){
 		}
 	}
 }else{
-	if ("META" %in% model | "PRSCSx" %in% model | "MAGEPRO_fullsumstats" %in% model | "MAGEPRO" %in% model){
+	if ("META" %in% model | "PRSCSx" %in% model | "MAGEPRO_fullsumstats" %in% model | "MAGEPRO" %in% model | "MAGEPRO_localx" %in% model){
 		cat( "ERROR: --sumstats not supplied, cannot compute META, PRS-CSx, MAGEPRO models \n" , sep='', file=stderr() )
 		cleanup()
         q()
@@ -180,7 +183,7 @@ if ( ! is.na(opt$sumstats)){
 }
 
 hashmap_ss <- list() #hashmap for sample sizes per dataset
-if ( ("META" %in% model | "PRSCSx" %in% model |  ("MAGEPRO" %in% model & !opt$skip_susie) ) ){
+if ( ("META" %in% model | "PRSCSx" %in% model |  ( ("MAGEPRO" %in% model | "MAGEPRO_localx" %in% model) & !opt$skip_susie) ) ){
 	if (!is.na(opt$ss)){
 		sample_sizes <- strsplit(opt$ss, ",", fixed = TRUE)[[1]]
 		if (length(sumstats) != length(sample_sizes)){
@@ -197,7 +200,7 @@ if ( ("META" %in% model | "PRSCSx" %in% model |  ("MAGEPRO" %in% model & !opt$sk
 }
 
 cohort_map <- list()
-if ("MAGEPRO" %in% model & (!opt$skip_susie) ) {
+if (("MAGEPRO" %in% model | "MAGEPRO_localx" %in% model) & (!opt$skip_susie) ) {
 	if ( !is.na(opt$ldref_dir) ) {
 		if (!file.exists(opt$ldref_dir)) {
 			cat( "ERROR: --ldref_dir directory does not exist, please check the path\n", sep='', file=stderr())
@@ -322,9 +325,17 @@ if ( "SuSiE" %in% model | "SuSiE_IMPACT" %in% model ){
 	if ( "SuSiE_IMPACT" %in% model ){
 		if(is.na(opt$impact_path)){
 			cat( "ERROR: Cannot perform SuSiE_IMPACT without the --impact_path flag\n" , sep='', file=stderr() )
-                	cleanup()
-                	q()
+            cleanup()
+            q()
 		}
+	}
+}
+
+if ( "MAGEPRO_localx" %in% model ){
+	if ( !opt$regress_localpcs) {
+		cat( "ERROR: Cannot perform MAGEPRO_localx without the --regress_localpcs flag\n" , sep='', file=stderr() )
+        cleanup()
+        q()
 	}
 }
 
@@ -333,7 +344,7 @@ if ( opt$verbose == 2 ) {
 	cat("Datasets available for this gene: \n")
 	print(datasets)
 	if (length(datasets) == 0){
-		cat("WARNING: no datasets available for this gene, META, PRS-CSx, and MAGEPRO will have NA weights \n")
+		cat("WARNING: no datasets available for this gene, META, PRS-CSx, MAGEPRO and MAGEPRO_localx will have NA weights \n")
 	}
 }
 
@@ -388,10 +399,31 @@ if ( !is.na(opt$pheno) ) {
 if ( opt$verbose == 2 ) cat("Made/Fetched phenotype \n")
 
 # Load in the covariates if needed
-var_cov = NA
 if ( !is.na(opt$covar) ) { 
 	covar = ( read.table(opt$covar,as.is=T,head=T) )
 	if ( opt$verbose >= 1 ) cat("### Loaded",ncol(covar)-2,"covariates\n")
+	colnames(covar)[1:2] <- c("FID", "IID") # assume FID and IID 
+}
+
+# if using local genotype PCs process those and append to covar here
+if (opt$regress_localpcs) { 
+	if (is.na(opt$localpcs_eigenvec)) {
+		cat("ERROR: Specify path to --localpcs_eigenvec to use local PCs!\n")
+		cleanup()
+		q()
+	}
+	if ( opt$verbose == 2 ) cat("### Loaded", opt$num_localpcs, "local genotype PCs\n")
+	df_pcs <- read.table(opt$localpcs_eigenvec,as.is=T,head=F) # columns – PCs; rows – people (i.e. FID/IID) and PCs
+	colnames(df_pcs)[1:2] <- c("FID", "IID") # assume FID and IID 
+	if ( !is.na(opt$covar) ) { 
+		covar = merge(covar, df_pcs, by = c("FID", "IID"))
+	}else{
+		covar = df_pcs
+	}
+}
+
+var_cov = NA
+if ( (!is.na(opt$covar)) | opt$regress_localpcs ){
 	# Match up data
 	m = match( paste(fam[,1],fam[,2]) , paste(covar[,1],covar[,2]) )	
 	m.keep = !is.na(m)
@@ -404,9 +436,11 @@ if ( !is.na(opt$covar) ) {
 	if ( opt$verbose == 2 ) cat( var_cov , "variance in phenotype explained by covariates\n" )
 	pheno[,3] = scale(reg$resid) #regressing out covar to single out genetic effect
 	raw.pheno.file = pheno.file
-	pheno.file = paste(pheno.file,".resid",sep='')
+	pheno.file = paste(pheno.file,".resid",sep='') # phenotype file after regressing out --covar
 	write.table(pheno,quote=F,row.names=F,col.names=F,file=pheno.file) #newly scaled pheno file 
 }
+
+
 
 if ( opt$verbose == 2 ) cat("Covariates loaded and regressed out of phenotype \n")
 
@@ -489,20 +523,6 @@ if ( !is.na(opt$covar) && opt$resid ) {
 	genos$bed = scale(genos$bed)
 }
 
-if (opt$regress_pcs) {
-	if (is.na(opt$pcs_eigenvec)) {
-		cat("ERROR: Specify path to --pcs_eigenvec to regress PCs!\n")
-		cleanup()
-		q()
-	}
-	if ( opt$verbose == 2 ) cat("Regressing", opt$num_pcs, "PCs out of the genotypes\n")
-	df_pcs <- fread(opt$pcs_eigenvec) # columns – PCs; rows – people (i.e. FID/IID) and PCs
-	for (i in 1:ncol(genos$bed)) {
-		genos$bed[,i] = summary(lm(genos$bed[,i] ~ as.matrix(df_pcs[,3:ncol(df_pcs)]) ))$resid
-	}
-	genos$bed = scale(genos$bed)
-}
-
 N.tot = nrow(genos$bed)
 if ( opt$verbose >= 1 ) cat(nrow(pheno),"phenotyped samples, ",nrow(genos$bed),"genotyped samples, ",ncol(genos$bed)," markers\n")
 
@@ -519,7 +539,7 @@ ext <- length(datasets)
 loaded_datasets <- c()
 susie_status <- setNames(rep(TRUE, length(sumstats)), sumstats) # if opt$skip_susie is true, we assume all available summary statistics files have susie data in 8/9/10 th column
 if (ext > 0){
-	if ( "MAGEPRO" %in% model ){
+	if ( "MAGEPRO" %in% model | "MAGEPRO_localx" %in% model ){
 		if (!opt$skip_susie) {
 			susie_status <<- cohort_fine_mapping(cohort_map, opt$sumstats_dir, opt$tmp, opt$ldref_dir, opt$out_susie, opt$gene, opt$PATH_plink, opt$verbose) # returns a list that maps dataset name -> TRUE/FALSE (indicating success running susie or not)
 		}
@@ -596,7 +616,7 @@ if ( ("PRSCSx" %in% model) & (ext > 0) ){
 }
 
 # --- PREPARE SUMMARY STATISTICS FOR MAGEPRO
-if ( ("MAGEPRO" %in% model) & (ext > 0) ){
+if ( ("MAGEPRO" %in% model | "MAGEPRO_localx" %in% model) & (ext > 0) ){
 	if ( opt$verbose >= 1){
 			cat("### PROCESSING SUMSTATS FOR MAGEPRO \n")
 	}
@@ -611,6 +631,14 @@ if ( ("MAGEPRO" %in% model) & (ext > 0) ){
 }else{
 	ext_magepro <- 0
 }
+
+# --- PREPARE LOCAL GENOTYPE PCs FOR MAGEPRO_localx 
+if ("MAGEPRO_localx" %in% model) {
+	m = match( paste(pheno[,1],pheno[,2]) , paste(covar[,1],covar[,2]) )	
+	covar = covar[m,] #reordering covariates to match fam file
+	localpcs = covar[,c((ncol(covar)-opt$num_localpcs+1):ncol(covar))]
+}
+# ---
 
 # --- CROSSVALIDATION ANALYSES
 set.seed(1)
@@ -644,6 +672,7 @@ if ( opt$crossval <= 1 ) {
 	r2_training_prscsx <- c()
 	r2_training_magepro_fullsumstats <- c()
 	r2_training_magepro <- c()
+	r2_training_magepro_localx <- c()
 
 	if ( ("META" %in% model) & (ext_fullsumstats > 0) ){
 		training_ss <- N.tot * ((opt$crossval - 1)/opt$crossval)
@@ -744,7 +773,7 @@ if ( opt$crossval <= 1 ) {
 			}
 			cv.calls[ indx , colcount ] = genos$bed[ cv.sample[ indx ] , , drop = FALSE] %*% pred.wgt.susie
 			pred_train_susie = summary(lm( cv.all[-indx,3] ~ (genos$bed[ cv.sample[-indx], , drop = FALSE] %*% pred.wgt.susie)))
-				r2_training_susie = append(r2_training_susie, pred_train_susie$adj.r.sq)
+			r2_training_susie = append(r2_training_susie, pred_train_susie$adj.r.sq)
 
 			colcount = colcount + 1
 		
@@ -758,10 +787,9 @@ if ( opt$crossval <= 1 ) {
 			pred.wgt.susieimpact <- weights.susie_impact(genos$bed[cv.sample[-indx], , drop = FALSE], cv.train[,3], opt$impact_path)
 			cv.calls[ indx , colcount ] = genos$bed[ cv.sample[ indx ] , , drop = FALSE] %*% pred.wgt.susieimpact
 			pred_train_susieimpact = summary(lm( cv.all[-indx,3] ~ (genos$bed[ cv.sample[-indx], , drop = FALSE] %*% pred.wgt.susieimpact)))
-				r2_training_susie_impact = append(r2_training_susie_impact, pred_train_susieimpact$adj.r.sq)
+			r2_training_susie_impact = append(r2_training_susie_impact, pred_train_susieimpact$adj.r.sq)
 
 			colcount = colcount + 1
-		
 
 		}
 
@@ -780,8 +808,7 @@ if ( opt$crossval <= 1 ) {
 				r2_training_prscsx = append(r2_training_prscsx, NA)
 			}
 			colcount = colcount + 1
-
-		}	
+		}
 
 		#------------------------------------------------------------------------------
 
@@ -797,10 +824,9 @@ if ( opt$crossval <= 1 ) {
 			}else{
 				cv.calls[ indx , colcount ] = NA
 				r2_training_magepro_fullsumstats = append(r2_training_magepro_fullsumstats, NA)
-		}
+			}
 		
-		colcount = colcount + 1
-
+			colcount = colcount + 1
 		}
 
 		#------------------------------------------------------------------------------
@@ -822,6 +848,41 @@ if ( opt$crossval <= 1 ) {
 			}else{
 				cv.calls[ indx , colcount ] = NA
 				r2_training_magepro = append(r2_training_magepro, NA)
+			}
+			colcount = colcount + 1
+		}
+		#-------------------------------------------------------------------------------
+
+
+		# MAGEPRO_localx----------------------------------------------------------------------
+		if ("MAGEPRO_localx" %in% model){
+			if (ext_magepro > 0){	
+				localpcs_train = localpcs[cv.sample[-indx], , drop = FALSE]
+				localpcs_test = localpcs[cv.sample[indx], , drop = FALSE]
+				listoutput <- weights.magepro_localx(pred.wgt, wgt_magepro, genos$bed[cv.sample[-indx], , drop = FALSE], cv.train[,3], localpcs_train, FALSE)
+				pred.wgt.magepro_localx = listoutput[[1]]
+				interactions_dict = listoutput[[2]]
+				basepredictions = genos$bed[ cv.sample[ indx ], , drop = FALSE] %*% pred.wgt.magepro_localx
+				for (c in 1:ext_magepro){
+					for (l in 1:opt$num_localpcs){
+						xeffect = interactions_dict[[paste0(wgt_magepro[c], as.character(l))]]
+						basepredictions = basepredictions + ( genos$bed[ cv.sample[ indx ], , drop = FALSE] %*% eval(parse(text = wgt_magepro[c])) ) * localpcs_test[,l] * xeffect
+					}
+				}
+				cv.calls[ indx , colcount ] = basepredictions
+				#store the r2 on training set
+				basepredictions_train = (genos$bed[ cv.sample[-indx], , drop = FALSE] %*% pred.wgt.magepro_localx)
+				for (c in 1:ext_magepro){
+					for (l in 1:opt$num_localpcs){
+						xeffect = interactions_dict[[paste0(wgt_magepro[c], as.character(l))]]
+						basepredictions_train = basepredictions_train + ( genos$bed[ cv.sample[-indx], , drop = FALSE] %*% eval(parse(text = wgt_magepro[c])) ) * localpcs_train[,l] * xeffect
+					}
+				}
+				pred_train_magepro_localx = summary(lm( cv.all[-indx,3] ~ basepredictions_train)) #r^2 between predicted and actual 
+				r2_training_magepro_localx = append(r2_training_magepro_localx, pred_train_magepro_localx$adj.r.sq)	
+			}else{
+				cv.calls[ indx , colcount ] = NA
+				r2_training_magepro_localx = append(r2_training_magepro_localx, NA)
 			}
 		}
 		#-------------------------------------------------------------------------------
@@ -857,6 +918,7 @@ if ( opt$crossval <= 1 ) {
 	if ("PRSCSx" %in% model) avg_training_r2_prscsx <- mean(r2_training_prscsx)
 	if ("MAGEPRO_fullsumstats" %in% model) avg_training_r2_magepro_fullsumstats <- mean(r2_training_magepro_fullsumstats)
 	if ("MAGEPRO" %in% model) avg_training_r2_magepro <- mean(r2_training_magepro)
+	if ("MAGEPRO_localx" %in% model) avg_training_r2_magepro_localx <- mean(r2_training_magepro_localx)
 
 }
 
@@ -948,7 +1010,7 @@ if ("MAGEPRO_fullsumstats" %in% model){
 	}else{
 		wgt.matrix[, colcount] = NA
 	}
-		colcount = colcount + 1
+	colcount = colcount + 1
 }
 
 # --- MAGEPRO
@@ -961,11 +1023,26 @@ if ("MAGEPRO" %in% model){
 	}else{
 		wgt.matrix[, colcount] = NA
 	}
+	colcount = colcount + 1
+}
+
+# --- MAGEPRO_localx model
+listoutput_magepro_localx <- NA
+if ("MAGEPRO_localx" %in% model){	
+	if (ext_magepro > 0){	
+		listoutput_magepro_localx <- weights.magepro_localx(pred.wgtfull, wgt_magepro, genos$bed, pheno[,3], localpcs, FALSE)
+		wgt.matrix[, colcount] = NA
+		# how to save this prediction model for TWAS? perhaps a whole other TWAS method can be designed to address this. 
+		# interaction effects depend on the local PC of the individuals in GWAS
+		# for now we save the non interaction prediction weights and the interaction slopes
+	}else{
+		wgt.matrix[, colcount] = NA
+	}
 }
 
 #--- SAVE RESULTS
 snps = genos$bim
-if ( ("MAGEPRO" %in% model) & (ext_magepro > 0) ){
+if ( ("MAGEPRO" %in% model | "MAGEPRO_localx" %in% model) & (ext_magepro > 0) ){
 	wgtmagepro <- append("pred.wgt", wgt_magepro)
 }else{
 	wgtmagepro = NA
@@ -979,7 +1056,7 @@ for (i in 1:(opt$crossval-1)){
 avg_cor <- mean(cors_weights)
 # ---
 
-save( wgt.matrix, snps, cv.performance, hsq, hsq.pv, N.tot , wgtmagepro, cf_total, avg_training_r2_single, avg_training_r2_meta, avg_training_r2_pt, avg_training_r2_susie, avg_training_r2_susie_impact, avg_training_r2_prscsx, avg_training_r2_magepro_fullsumstats, avg_training_r2_magepro, var_cov, avg_cor, SINGLE_top1, file = paste( opt$out , ".wgt.RDat" , sep='' ) )
+save( wgt.matrix, snps, cv.performance, hsq, hsq.pv, N.tot , wgtmagepro, cf_total, avg_training_r2_single, avg_training_r2_meta, avg_training_r2_pt, avg_training_r2_susie, avg_training_r2_susie_impact, avg_training_r2_prscsx, avg_training_r2_magepro_fullsumstats, avg_training_r2_magepro, var_cov, avg_cor, SINGLE_top1, listoutput_magepro_localx, file = paste( opt$out , ".wgt.RDat" , sep='' ) )
 
 # --- CLEAN-UP
 if ( opt$verbose >= 1 ) cat("### CLEANING UP\n")

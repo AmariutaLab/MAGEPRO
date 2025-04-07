@@ -4,11 +4,11 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
-#SBATCH -t 02:00:00
-#SBATCH -J MAGEPRO
+#SBATCH -t 04:00:00
+#SBATCH -J MAGEPRO_localancestry
 #SBATCH -A csd832
-#SBATCH -o ../working_err/MAGEPRO.%j.%N.out
-#SBATCH -e ../working_err/MAGEPRO.%j.%N.err
+#SBATCH -o ../working_err/MAGEPRO_localancestry.%j.%N.out
+#SBATCH -e ../working_err/MAGEPRO_localancestry.%j.%N.err
 #SBATCH --export=ALL
 #SBATCH --constraint="lustre"
 #--- EDIT ABOVE TO SUIT YOUR HPC CLUSTER
@@ -51,8 +51,8 @@ ldrefs=${29}
 in_sample=${30}
 out_susie=${31}
 skip_susie=${32}
-regress_pcs=${33}
-num_pcs=${34}
+regress_localpcs=${33}
+num_localpcs=${34}
 n_threads=${35}
 
 
@@ -103,8 +103,8 @@ export out_susie=$out_susie
 export skip_susie=$skip_susie
 export in_sample=$in_sample
 export intermed=$intermed
-export regress_pcs=$regress_pcs
-export num_pcs=$num_pcs
+export regress_localpcs=$regress_localpcs
+export num_localpcs=$num_localpcs
 
 
 #--- create directory for temporary/working files 
@@ -136,8 +136,8 @@ process_gene() {
     if test -f "$filecheck"
         then
             $plink_exec --bfile $plinkdir/$gene --allow-no-sex --make-bed --keep $ind --indiv-sort f $ind --out $wd/$gene
-            if [ "$regress_pcs" = true ]; then
-                $plink_exec --bfile "$wd/$gene" --out "$wd/${gene}_pca" --pca
+            if [ "$regress_localpcs" = "TRUE" ]; then
+                $plink_exec --bfile "$wd/$gene" --out "$wd/${gene}_pca" --pca $num_localpcs
             fi
             pcs_eigenvec="$wd/${gene}_pca.eigenvec"
             rm $wd/$gene.log 
@@ -148,7 +148,7 @@ process_gene() {
             mv $wd/$gene.mod.fam $wd/$gene.fam 
             TMP=$tmpdir/${gene}
             OUT=$weights/${gene}
-            cmd="Rscript MAGEPRO.R --gene $gene --bfile $wd/$gene --covar $intermed/Covar_All.txt --tmp $TMP --out $OUT --PATH_gcta $gcta --PATH_plink ${plink_exec} --sumstats_dir $sumstats_dir --sumstats $sumstats --models $models --ss $ss --resid $resid --hsq_p $hsq_p --lassohsq $lassohsq --hsq_set $hsq_set --crossval $crossval --verbose $verbose --noclean $noclean --save_hsq $save_hsq --ldref_pt $ldref_pt --prune_r2 $prune_r2 --threshold_p $threshold_p --ldref_PRSCSx $ldref_PRSCSx --dir_PRSCSx $dir_PRSCSx --phi_shrinkage_PRSCSx $phi_shrinkage_PRSCSx --pops $pops --impact_path ${impact_path}${chr}.txt --ldref_dir ${ldref_dir} --ldrefs ${ldrefs} --in_sample ${in_sample} --out_susie ${out_susie} --skip_susie ${skip_susie} --regress_pcs $regress_pcs --pcs_eigenvec $pcs_eigenvec --num_pcs $num_pcs"
+            cmd="Rscript MAGEPRO.R --gene $gene --bfile $wd/$gene --covar $intermed/Covar_All.txt --tmp $TMP --out $OUT --PATH_gcta $gcta --PATH_plink ${plink_exec} --sumstats_dir $sumstats_dir --sumstats $sumstats --models $models --ss $ss --resid $resid --hsq_p $hsq_p --lassohsq $lassohsq --hsq_set $hsq_set --crossval $crossval --verbose $verbose --noclean $noclean --save_hsq $save_hsq --ldref_pt $ldref_pt --prune_r2 $prune_r2 --threshold_p $threshold_p --ldref_PRSCSx $ldref_PRSCSx --dir_PRSCSx $dir_PRSCSx --phi_shrinkage_PRSCSx $phi_shrinkage_PRSCSx --pops $pops --impact_path ${impact_path}${chr}.txt --ldref_dir ${ldref_dir} --ldrefs ${ldrefs} --in_sample ${in_sample} --out_susie ${out_susie} --skip_susie ${skip_susie} --regress_localpcs $regress_localpcs --localpcs_eigenvec $pcs_eigenvec --num_localpcs $num_localpcs"
             echo $cmd
             $cmd
             rm $wd/$gene.* 

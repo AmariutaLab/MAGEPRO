@@ -447,3 +447,49 @@ weights.magepro = function(basemodel, wgts, geno, pheno, save_alphas) {
 	if(save_alphas) cf_total <<- cf
 	return(pred.wgt.magepro)
 }
+
+
+weights.magepro_localx = function(basemodel, wgts, geno, pheno, pcs, save_alphas) {
+	# PURPOSE: compute MAGEPRO weights with local ancestry interactions
+	# basemodel = target population prediction model, a vector of effect sizes (this base model will be one of the features in the regression)
+	# wgts = list of name of variables holding magepro_processed weights 
+	# geno = genotype matrix for training mixing weights 
+	# pheno = vector of gene expression values for individuals in geno (also for training mixing weights)
+	# pcs = local genotype pcs to allow interactions with wgts
+	# save_alphas = T/F, save alpha coefficients to 'cf_total'?
+	ext <- length(wgts) # number of external summary statistics 
+	numpcs <- ncol(pcs) # number of local genotype pcs 
+	#1. format glmnet input
+	eq <- matrix(0, nrow = nrow(geno), ncol = ext+1+(ext*numpcs))
+	eq[,1] <- geno %*% basemodel
+	for (c in 1:ext){
+		eq[,(c+1)] <- geno %*%  eval(parse(text = wgts[c])) 
+	}
+	for (c in 1:ext){
+		for (l in 1:numpcs){
+			nextindex = (((c-1)*numpcs)+1+ext+l)
+			eq[,nextindex] <- ( geno %*%  eval(parse(text = wgts[c])) ) * pcs[,l] # interaction
+		}
+	}
+	#2. run ridge regression to find optimal coefficients for each dataset
+	y <- cv.glmnet(x = eq , y = pheno, alpha = 0, nfold = 5, intercept = T, standardize = T)
+	cf = coef(y, s = "lambda.min")[2:(ext+(ext*numpcs)+2)]
+	predtext <- "cf[1]*basemodel"
+	for (i in 2:(ext+1)){
+		predtext <- paste0(predtext, " + cf[", i, "]*", wgts[(i-1)])
+	}
+	interaction_effects <- cf[(ext+2):length(cf)] # coefficients for interactions
+	interaction_effect_dict <- list()
+	for (c in 1:ext){
+		for (l in 1:numpcs){
+			interaction_effect_dict[[paste0(wgts[c], as.character(l))]] <- interaction_effects[((c-1)*numpcs)+l]
+		}
+	}
+	pred.wgt.magepro <- eval(parse(text = predtext)) # linearly combined base + external datasets 
+	if(length(pred.wgt.magepro) == 1){
+		pred.wgt.magepro <- t(pred.wgt.magepro)
+	}
+	if(save_alphas) cf_total <<- cf
+	return(list(pred.wgt.magepro, interaction_effect_dict))
+}
+

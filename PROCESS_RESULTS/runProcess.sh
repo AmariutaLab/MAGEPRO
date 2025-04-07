@@ -6,8 +6,8 @@
 #SBATCH -t 02:00:00
 #SBATCH -J MAGEPRO_process
 #SBATCH -A csd832
-#SBATCH -o ../working_err/MAGEPRO_process.%j.%N.out
-#SBATCH -e ../working_err/MAGEPRO_process.%j.%N.err
+#SBATCH -o ../../working_err/MAGEPRO_process.%j.%N.out
+#SBATCH -e ../../working_err/MAGEPRO_process.%j.%N.err
 #SBATCH --export=ALL
 #SBATCH --constraint="lustre"
 
