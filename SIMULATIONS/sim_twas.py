@@ -36,10 +36,17 @@ NUMTARGET_LIST = [300]
 WINDOW = 500000
 
 NCAUSAL_ARR = [1] # number of causal SNPs for eQTL file
-EQTL_H2_ARR = [0.01, 0.05, 0.1] # True heritability value
-PHEN_VAR_GENE_COMPONENT = [0, 0.0001, 0.001, 0.01]
-CORRELATIONS_GE = [0.2, 0.8]
-GWAS_SAMPLE_SIZE = [20000, 100000, 600000]
+
+# EQTL_H2_ARR = [0.01, 0.05, 0.1] # True heritability value
+# PHEN_VAR_GENE_COMPONENT = [0, 0.0001, 0.001, 0.01]
+# CORRELATIONS_GE = [0.2, 0.8]
+# GWAS_SAMPLE_SIZE = [20000, 100000, 600000]
+
+EQTL_H2_ARR = [0.05, 0.1] # True heritability value
+PHEN_VAR_GENE_COMPONENT = [0.001, 0.01]
+CORRELATIONS_GE = [0.8]
+
+GWAS_SAMPLE_SIZE = [20000]
 
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
 SEP = "\t"
@@ -524,7 +531,8 @@ def run_magepro(target_gene,
 
     return (h2g, hsq_p, coef, r2all, magepro_coef, magepro_r2)
 
-def run_metro(eqtl_paths, eqtl_corr_paths, eqtl_samplesizes, gwas_file, ngwas, out):
+def run_metro(eqtl_paths, pop_names, eqtl_corr_paths,
+              eqtl_samplesizes, gwas_file, ngwas, out):
     """
     Compute METRO test statistics. 
 
@@ -541,6 +549,7 @@ def run_metro(eqtl_paths, eqtl_corr_paths, eqtl_samplesizes, gwas_file, ngwas, o
     subprocess.run(['Rscript', 'run_metro.R',
                     '-e', eqtl_paths,
                     '-l', eqtl_corr_paths,
+                    '-p', pop_names,
                     '-s', eqtl_samplesizes,
                     '-g', gwas_file,
                     '-n', ngwas,
@@ -648,7 +657,7 @@ def main():
         print(f'LD_path_directory {curr_pop}', ld_path_directory)
         create_directory(ld_path_directory)
     
-    for i in range(1):
+    for i in range(5):
         print("Picking random gene. Number:", i)
         # pick random gene available in all populations
         random_gene_list, chr, min_num_snps = pick_rand_gene(
@@ -799,12 +808,14 @@ def main():
                                 metro_output_path = os.path.join(metro_path_base, curr_gene)
                                 print('Running METRO')
                                 
-                                metro_alpha, metro_p, metro_lrt, metro_betas = run_metro(eqtl_marginal_sumstats_paths,
-                                                                                eqtl_snp_corr_paths,
-                                                                                eqtl_samplesizes_joined,
-                                                                                gwas_file,
-                                                                                str(NUM_GWAS),
-                                                                                metro_output_path)
+                                metro_alpha, metro_p, metro_lrt, metro_betas = run_metro(
+                                    eqtl_paths=eqtl_marginal_sumstats_paths,
+                                    pop_names=args.pops_list,
+                                    eqtl_corr_paths=eqtl_snp_corr_paths,
+                                    eqtl_samplesizes=eqtl_samplesizes_joined,
+                                    gwas_file=gwas_file,
+                                    ngwas=str(NUM_GWAS),
+                                    out=metro_output_path)
                                 if len(metro_betas) == 3 and metro_betas == 'NaN':
                                     magepro_metro_corr = 'NaN'
                                     print("Metro beta is NaN. Can't calculate correlation coefficient.")

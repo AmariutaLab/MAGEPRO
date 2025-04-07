@@ -9,6 +9,8 @@ arg_parser <- function() {
     option_list <- list(
         make_option(c("-e", "--eqtl_files"), type = "character",
                     help = "Comma-separated string of marginal eQTL summary statistics file paths", metavar = "eQTLsumstats"),
+        make_option(c("-p", "--pop_names"), type="character",
+                    help="Names of populations", metavar='PopNames'),
         make_option(c("-l", "--ld_matrices"), type = "character",
                     help = "Comma-separated string of LD matrix file paths", metavar = "eQTLlds"),
         make_option(c("-s", "--ns_of_people"), type = "character",
@@ -43,31 +45,39 @@ arg_parser <- function() {
     }
     return(opt)
 }
-
+# load("PLTP_GEUVADIS.RData")
+# ls()
 opt <- arg_parser()
 
 eQTL_paths = strsplit(opt$eqtl_files, split = ",")[[1]]
 eQTL_LD_paths = strsplit(opt$ld_matrices, split = ",")[[1]]
 eQTL_samplesizes = lapply(strsplit(opt$ns_of_people, split = ","), as.numeric)[[1]]
+pop_names = strsplit(opt$pop_names, split=",")[[1]]
 
 # read eQTL files
 eQTL_dfs = list()
 for (path in eQTL_paths){
     df <- fread(path, header=TRUE, dec=".")
     colnames(df) = c("Gene", "SNP", "A1", "A2", "BETA", "SE", "P")
-    if (length(eQTL_dfs) > 0){
-        df <- df[match(eQTL_dfs[[length(eQTL_dfs)]]$SNP, df$SNP), ] # match snp order
-        if (!all(df$SNP == eQTL_dfs[[length(eQTL_dfs)]]$SNP)){
-            sys.exit('eQTL files contain different snps')
-        }
-    }
+    # if (length(eQTL_dfs) > 0){
+    #     df <- df[match(eQTL_dfs[[length(eQTL_dfs)]]$SNP, df$SNP), ] # match snp order
+    #     if (!all(df$SNP == eQTL_dfs[[length(eQTL_dfs)]]$SNP)){
+    #         sys.exit('eQTL files contain different snps')
+    #     }
+    # }
     eQTL_dfs = append(eQTL_dfs, list(df))
 }
-snp_list = eQTL_dfs[[1]]$SNP
 
+
+
+
+snp_list = eQTL_dfs[[1]]$SNP
+# print(eQTL_dfs)
 # read LD files
 eQTLLDs = list()
-for (path in eQTL_LD_paths){
+for (i in seq_along(eQTL_LD_paths)){
+    path <- eQTL_LD_paths[i]
+    pop <- pop_names[i]
     ld_df <- fread(path, header=TRUE, dec=".")
     # build matrix
     ld_matrix <- matrix(NA, nrow = length(snp_list), ncol = length(snp_list), dimnames = list(snp_list, snp_list))
@@ -77,7 +87,7 @@ for (path in eQTL_LD_paths){
     ld_matrix[cbind(index_A, index_B)] <- ld_df$R
     ld_matrix[cbind(index_B, index_A)] <- ld_df$R
     diag(ld_matrix) <- 1
-    eQTLLDs = append(eQTLLDs, list(ld_matrix))
+    eQTLLDs[[pop]] <- ld_matrix
 }
 
 # create matrix of eQTL marginal z scores 
@@ -85,17 +95,59 @@ eQTLzscores <- matrix(NA, nrow = length(snp_list), ncol = length(eQTL_dfs))
 for (i in 1:length(eQTL_dfs)){
     eQTLzscores[,i] = eQTL_dfs[[i]]$BETA / eQTL_dfs[[i]]$SE
 }
+colnames(eQTLzscores) <- pop_names
 
 # read in gwas file 
-gwas_df <- fread(opt$gwas_file, header=TRUE)
+gwas_df <- fread(opt$gwas_file, header = TRUE, dec = ".")
 GWASzscores <- gwas_df$beta / gwas_df$se
+names(GWASzscores) <- snp_list
+
 
 # metro 
-METRORes2 <- METRO2SumStat(eQTLzscores, eQTLLDs, GWASzscores, 
-                         eQTLLDs[[1]], eQTL_samplesizes, opt$ngwas_of_people, verbose = T)
-metro_statistic = METRORes2$alpha 
+METRORes2 <- METRO2SumStat(eQTLzscores,
+                           eQTLLDs,
+                           GWASzscores,
+                           eQTLLDs[[1]],
+                           eQTL_samplesizes,
+                           opt$ngwas_of_people, verbose = T)
+
+if (anyNA(eQTLzscores)) {
+  cat("There are NA values in eQTLzscores\n")
+} else {
+  cat("No NA values in eQTLzscores\n")
+}
+
+if (anyNA(eQTLLDs)) {
+  cat("There are NA values in eQTLLDs\n")
+} else {
+  cat("No NA values in eQTLLDs\n")
+}
+
+if (anyNA(GWASzscores)) {
+  cat("There are NA values in GWASzscores\n")
+} else {
+  cat("No NA values in GWASzscores\n")
+}
+
+if (anyNA(eQTLLDs[[1]])) {
+  cat("There are NA values in eQTLLDs[[1]]\n")
+} else {
+  cat("No NA values in eQTLLDs[[1]]\n")
+}
+
+
+# METRORes2 <- METRO2SumStat(eQTLzscores,
+#                            eQTLLDMatrix,
+#                            GWASzscores, 
+#                            GWASLDMatrix,
+#                            ns,
+#                            n, verbose = T)
+metro_statistic = METRORes2$alpha
 metro_p = METRORes2$pvalueLRT
 metro_lrtstat = METRORes2$LRTStat
 metro_betas = METRORes2$beta
+# gwas_heritability = METRORes2$h2m
+# gexpr_heritability = METRORes2$h2y
+str(METRORes2)
 write.table(data.frame(a = c(metro_statistic), p = c(metro_p), lrt = (metro_lrtstat)), file = paste0(opt$output_folder, "_stats.txt"), quote = F, row.names = F, col.names = T, sep = '\t')
 write.table(data.frame(betas = metro_betas), file = paste0(opt$output_folder, "_betas.txt"), quote = F, row.names = F, col.names = T, sep = '\t')
