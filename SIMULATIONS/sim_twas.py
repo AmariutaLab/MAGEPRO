@@ -50,7 +50,7 @@ GWAS_SAMPLE_SIZE = [20000]
 
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
 SEP = "\t"
-OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR\n"""
+OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}PRSCSx_R2{SEP}PRSCSx_Z{SEP}PRSCSx_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR{SEP}MAGEPRO_PRSCSx_CORR\n"""
 
 def get_ld(prefix):
     # return cholesky L
@@ -531,6 +531,52 @@ def run_magepro(target_gene,
 
     return (h2g, hsq_p, coef, r2all, magepro_coef, magepro_r2)
 
+def run_prscsx(target_gene, 
+                Z_eqtl,
+                b_qtls,
+                gexpr,
+                prscsx_tmp_path,
+                pop,
+                num_people,
+                sumstats_files_external,
+                pops_external):
+    """
+        target_gene - plink formated file for gene from target cohort
+        Z_eqtl - simulated genotypes for target gene
+        b_qtls - simulated latent effect sizes
+        gexpr -  simulated gene expression. Used to fit_sparse_regularized_lm
+        prscsx_tmp_path - path to where temporary file will be stored
+        pop - target population
+        num_people - number of people in target population
+        sumstats_files_external - paths to summary statistics files
+        pops_external - names of external populations
+
+        Returns
+        -------
+        prscsx_coef, prscsx_r2
+    """
+    bim, fam, G_all = read_plink(target_gene)
+    bim = np.array(bim)
+
+    b_qtls = np.reshape(b_qtls.T, (bim.shape[0], 1))
+    best_penalty, coef, h2g, hsq_p, r2all = sim_eqtl(Z_eqtl, gexpr, prscsx_tmp_path)
+
+    if np.all(coef == 0):
+        print("using top1 backup")
+        r2all, r2_top1, coef = top1_cv(num_people, Z_eqtl, gexpr)
+
+    # --- PRSCSx
+    executable_dir="/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO/BENCHMARK/PRScsx"
+    ld_reference_dir="/expanse/lustre/projects/ddp412/kakamatsu/eQTLsummary/multipopGE/benchmark/LD_ref"
+    sumstats_files = ",".join(sumstats_files_external)
+    population_sumstats = ",".join(pops_external)
+    samplesize_sumstats = ",".join([DEFAULT_NUM_OF_PEOPLE_EQTL]*2)
+    prscsx_weights = PRSCSx_shrinkage(executable_dir, ld_reference_dir, prscsx_tmp_path, sumstats_files, samplesize_sumstats, population_sumstats, bim, 1e-7)
+    prscsx_r2, prscsx_coef = prscsx_cv(num_people, z_eqtl, gexpr, prscsx_weights, best_penalty, 'lasso')
+
+    return (prscsx_coef, prscsx_r2)
+
+
 def run_metro(eqtl_paths, pop_names, eqtl_corr_paths,
               eqtl_samplesizes, gwas_file, ngwas, out):
     """
@@ -647,6 +693,8 @@ def main():
     create_directory(ld_path_base)
     metro_path_base = os.path.join(args.tmpdir, 'metro')
     create_directory(metro_path_base)
+    prscsx_path_base = os.path.join(args.tmpdir, 'prscsx')
+    create_directory(prscsx_path_base)
 
     for curr_pop in POPS_LIST:
         sumstats_path = os.path.join(sumstats_path_base, curr_pop)
@@ -766,6 +814,19 @@ def main():
                                 print("Current genes:", random_gene_list)
                                 print("Summary statistics:", sumstats_files_external)
                                 continue
+                            print("Run PRSCSx for", curr_gene)
+                            tmp_path_prscsx = os.path.join(prscsx_path_base, curr_gene) 
+                            prscsx_coef, prscsx_r2 = run_prscsx(
+                                target_gene=random_gene_list[0],
+                                Z_eqtl=simulated_genotypes[POPS_LIST[0]],
+                                b_qtls=simulated_betas[POPS_LIST[0]],
+                                gexpr=simulated_gexprs[POPS_LIST[0]],
+                                tmp_path=tmp_path_prscsx,
+                                pop=POPS_LIST[0],
+                                num_people=NUMTARGET,
+                                sumstats_files_external=sumstats_files_external,
+                                pops_external=POPS_LIST[1::]  # here we just slice
+                            )
 
                             for NUM_GWAS in GWAS_SAMPLE_SIZE:
                                 # 5. Perform TWAS
@@ -793,6 +854,11 @@ def main():
                                 z_twas_magepro, p_twas_magepro = compute_twas(
                                                                         gwas,
                                                                         magepro_coef,
+                                                                        LD_test)
+                                                        
+                                z_twas_prscsx, p_twas_prscsx = compute_twas(
+                                                                        gwas,
+                                                                        prscsx_coef,
                                                                         LD_test)
 
                                 # 6. Run METRO
@@ -823,11 +889,12 @@ def main():
                                     magepro_metro_corr = np.corrcoef(magepro_coef, metro_betas)[0, 1]
                                 
                                 magepro_lasso_corr = np.corrcoef(magepro_coef, lasso_coef)[0, 1]
+                                magepro_prscsx_corr = np.corrcoef(magepro_coef, prscsx_coef)[0, 1]
 
                                 target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}_{NUM_GWAS}'
                                 print('Writing row for:', target_gene)
                                 with open(args.out, "a") as f:
-                                        f.write(f"""{target_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}\n""")
+                                        f.write(f"""{target_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{prscsx_r2}{SEP}{z_twas_prscsx}{SEP}{p_twas_prscsx}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}{SEP}{magepro_prscsx_corr}\n""")
                                 # return
         # clean up
         # command = f'rm -rf {rgenes}'
