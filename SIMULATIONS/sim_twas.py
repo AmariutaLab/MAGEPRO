@@ -35,22 +35,22 @@ from magepro_simulations_functions import (magepro_cv, top1_cv,
 NUMTARGET_LIST = [300]
 WINDOW = 500000
 
-NCAUSAL_ARR = [1] # number of causal SNPs for eQTL file
+NCAUSAL_ARR = [10] # number of causal SNPs for eQTL file
 
 # EQTL_H2_ARR = [0.01, 0.05, 0.1] # True heritability value
 # PHEN_VAR_GENE_COMPONENT = [0, 0.0001, 0.001, 0.01]
 # CORRELATIONS_GE = [0.2, 0.8]
 # GWAS_SAMPLE_SIZE = [20000, 100000, 600000]
 
-EQTL_H2_ARR = [0.05, 0.1] # True heritability value
-PHEN_VAR_GENE_COMPONENT = [0.001, 0.01]
-CORRELATIONS_GE = [0.8]
+EQTL_H2_ARR = [0.01, 0.05, 0.1] # True heritability value
+PHEN_VAR_GENE_COMPONENT = [0, 0.0001, 0.001, 0.01]
+CORRELATIONS_GE = [0.2, 0.8, 1.0]
 
-GWAS_SAMPLE_SIZE = [20000]
+GWAS_SAMPLE_SIZE = [20000, 600000]
 
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
 SEP = "\t"
-OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR\n"""
+OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}METRO_DF{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR{SEP}realized_h\n"""
 
 def get_ld(prefix):
     # return cholesky L
@@ -555,14 +555,14 @@ def run_metro(eqtl_paths, pop_names, eqtl_corr_paths,
                     '-n', ngwas,
                     '-o', out])
 
-    output = ['NaN', 'NaN', 'NaN', 'NaN']
+    output = ['NaN', 'NaN', 'NaN', 'NaN', 'NaN']
 
     if os.path.exists(out + "_stats.txt"):
         stats = pd.read_csv(out + "_stats.txt", sep = '\t')
-        output[0], output[1], output[2] = stats['a'].values[0], stats['p'].values[0], stats['lrt'].values[0]
+        output[0], output[1], output[2], output[3] = stats['a'].values[0], stats['p'].values[0], stats['lrt'].values[0], stats['df'].values[0]
     if os.path.exists(out + "_betas.txt"):
         betas = pd.read_csv(out + "_betas.txt", sep = '\t')
-        output[3] = betas['betas'].values
+        output[4] = betas['betas'].values
 
     return output
 
@@ -683,11 +683,12 @@ def main():
                             eqtl_snp_correlation_files = [] # for METRO, need snp correlation matrices for each population
                             eqtl_samplesizes = [] # for METRO, need sample sizes for each summary statistic 
 
-                            effects = correlated_effects_cholesky(EQTL_H2,
+                            effects, realized_h = correlated_effects_cholesky(EQTL_H2,
                                                                 EQTL_H2,
                                                                 EQTL_H2,
                                                                 corr=CORRELATION,
                                                                 nums=NCAUSAL)
+                            realized_h = ','.join(f"{x:.2e}" for x in realized_h.flatten())
                             # effects_df is a DataFrame, where columns are
                             # populations, rows represent SNP weights for causal 
                             # SNPs
@@ -745,7 +746,7 @@ def main():
                                 eqtl_samplesizes.append(CURR_NUM_PEOPLE)
 
                             # 4. Run MAGEPRO; target population is first
-                            curr_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}'
+                            curr_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}'
                             gcta_output_path = os.path.join(args.tmpdir, curr_gene)
 
                             print("Run MAGEPRO for", curr_gene)
@@ -798,7 +799,7 @@ def main():
                                 # 6. Run METRO
                                 print('Preparing inputs for METRO')
                                 # compute marginal z scores
-                                curr_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUM_GWAS}'
+                                curr_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}_{NUM_GWAS}'
                                 eqtl_marginal_sumstats_paths = ",".join(marginal_sumstats_files)
                                 eqtl_snp_corr_paths = ",".join(eqtl_snp_correlation_files)
                                 eqtl_samplesizes_joined = ",".join([str(ss) for ss in eqtl_samplesizes])
@@ -808,7 +809,7 @@ def main():
                                 metro_output_path = os.path.join(metro_path_base, curr_gene)
                                 print('Running METRO')
                                 
-                                metro_alpha, metro_p, metro_lrt, metro_betas = run_metro(
+                                metro_alpha, metro_p, metro_lrt, metro_df, metro_betas = run_metro(
                                     eqtl_paths=eqtl_marginal_sumstats_paths,
                                     pop_names=args.pops_list,
                                     eqtl_corr_paths=eqtl_snp_corr_paths,
@@ -823,12 +824,9 @@ def main():
                                     magepro_metro_corr = np.corrcoef(magepro_coef, metro_betas)[0, 1]
                                 
                                 magepro_lasso_corr = np.corrcoef(magepro_coef, lasso_coef)[0, 1]
-
-                                target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}_{NUM_GWAS}'
-                                print('Writing row for:', target_gene)
+                                print('Writing row for:', curr_gene)
                                 with open(args.out, "a") as f:
-                                        f.write(f"""{target_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}\n""")
-                                # return
+                                        f.write(f"""{curr_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{metro_df}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}{SEP}{realized_h}\n""")
         # clean up
         # command = f'rm -rf {rgenes}'
         # subprocess.run(command.split())

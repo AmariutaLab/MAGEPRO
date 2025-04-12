@@ -53,18 +53,18 @@ eQTL_paths = strsplit(opt$eqtl_files, split = ",")[[1]]
 eQTL_LD_paths = strsplit(opt$ld_matrices, split = ",")[[1]]
 eQTL_samplesizes = lapply(strsplit(opt$ns_of_people, split = ","), as.numeric)[[1]]
 pop_names = strsplit(opt$pop_names, split=",")[[1]]
-
+cat("Current METRO gene is ", opt$output_folder, "\n")
 # read eQTL files
 eQTL_dfs = list()
 for (path in eQTL_paths){
     df <- fread(path, header=TRUE, dec=".")
     colnames(df) = c("Gene", "SNP", "A1", "A2", "BETA", "SE", "P")
-    # if (length(eQTL_dfs) > 0){
-    #     df <- df[match(eQTL_dfs[[length(eQTL_dfs)]]$SNP, df$SNP), ] # match snp order
-    #     if (!all(df$SNP == eQTL_dfs[[length(eQTL_dfs)]]$SNP)){
-    #         sys.exit('eQTL files contain different snps')
-    #     }
-    # }
+    if (length(eQTL_dfs) > 0){
+        df <- df[match(eQTL_dfs[[length(eQTL_dfs)]]$SNP, df$SNP), ] # match snp order
+        if (!all(df$SNP == eQTL_dfs[[length(eQTL_dfs)]]$SNP)){
+            sys.exit('eQTL files contain different snps')
+        }
+    }
     eQTL_dfs = append(eQTL_dfs, list(df))
 }
 
@@ -109,7 +109,9 @@ METRORes2 <- METRO2SumStat(eQTLzscores,
                            GWASzscores,
                            eQTLLDs[[1]],
                            eQTL_samplesizes,
-                           opt$ngwas_of_people, verbose = T)
+                           opt$ngwas_of_people,
+                           hthre = 0.001,
+                           verbose = T)
 
 if (anyNA(eQTLzscores)) {
   cat("There are NA values in eQTLzscores\n")
@@ -142,12 +144,11 @@ if (anyNA(eQTLLDs[[1]])) {
 #                            GWASLDMatrix,
 #                            ns,
 #                            n, verbose = T)
-metro_statistic = METRORes2$alpha
+metro_statistic = METRORes2$alpha # gene effect on GWAS outcome
 metro_p = METRORes2$pvalueLRT
 metro_lrtstat = METRORes2$LRTStat
 metro_betas = METRORes2$beta
-# gwas_heritability = METRORes2$h2m
-# gexpr_heritability = METRORes2$h2y
+metro_df = METRORes2$df
 str(METRORes2)
-write.table(data.frame(a = c(metro_statistic), p = c(metro_p), lrt = (metro_lrtstat)), file = paste0(opt$output_folder, "_stats.txt"), quote = F, row.names = F, col.names = T, sep = '\t')
+write.table(data.frame(a = c(metro_statistic), p = c(metro_p), lrt = (metro_lrtstat), df=(metro_df)), file = paste0(opt$output_folder, "_stats.txt"), quote = F, row.names = F, col.names = T, sep = '\t')
 write.table(data.frame(betas = metro_betas), file = paste0(opt$output_folder, "_betas.txt"), quote = F, row.names = F, col.names = T, sep = '\t')
