@@ -43,12 +43,12 @@ opt <- arg_parser()
 
 # read files
 df <- fread(opt$c, header=TRUE, dec=".")       # read in current gene
-colnames(df) = c("Gene", "SNP", "A1", "A2", "BETA", "SE", "P")
+colnames(df) = c("SNP", "A1", "A2", "BETA", "SE", "P")
 ld_stats <- fread(opt$l, header=TRUE, dec=".")    # read in ld_stats
 
 # filter out in gene that are not present in LD
-df <- df[df[[2]] %in% (union(ld_stats$SNP_A, ld_stats$SNP_B))]
-snp_list <- df[[2]]
+df <- df[df$SNP %in% (union(ld_stats$SNP_A, ld_stats$SNP_B))]
+snp_list <- df$SNP
 
 ############################################################
 # checking for allele flips or ambiguous allele pairs
@@ -90,17 +90,18 @@ allele.qc = function(a1,a2,ref1,ref2) {
   return(snp)
 }
 
-qc_results <- allele.qc(df[[3]], df[[4]], bimdf[[5]], bimdf[[6]])
+qc_results <- allele.qc(df$A1, df$A2, bimdf[[5]], bimdf[[6]])
 
-df[qc_results$flip, 5] <- df[qc_results$flip, 5] * -1
-temp <- df[qc_results$flip, 3]
-df[qc_results$flip, 3] <- df[qc_results$flip, 4]
-df[qc_results$flip, 4] <- temp
+df[qc_results$flip, "BETA"] <- df[qc_results$flip, "BETA"] * -1
+
+temp <- df[qc_results$flip, "A2"]
+df[qc_results$flip, "A2"] <- df[qc_results$flip, "A1"]
+df[qc_results$flip, "A1"] <- temp
 
 df <- df[qc_results$keep, ]
 
 rownames(df) <- NULL
-snp_list <- df[[2]]
+snp_list <- df$SNP
 
 
 ld_stats <- ld_stats[ld_stats$SNP_A %in% snp_list] # removed snps from corr matrix that are removed by QC
@@ -123,7 +124,7 @@ gene <- sub("\\.txt$", "", opt$c)
 cat("Running IBSS-ss algorithm through susie_rss...\n")
 tryCatch({
     withCallingHandlers({
-        res <- susie_rss(bhat = df[[5]], shat = df[[6]], R = ld_matrix, n = opt$n, max_iter = 100)
+        res <- susie_rss(bhat = df$BETA, shat = df$SE, R = ld_matrix, n = opt$n, max_iter = 100)
     }, warning = function(w) {
         if (grepl("IBSS algorithm did not converge", w$message)) {
             cat("WARNING in run_susie.R:131: IBSS algorithm did not converge in 100 iterations. ", "\n")
@@ -150,11 +151,11 @@ for(cname in names(res$sets$cs)) {
 # writing the table
 df$pip <- pips
 betas <- coef(res)[-1]  # coef.susie – extract regression
-df$beta <- betas
-df$beta_sd <- susie_get_posterior_sd(res)
+df$posterior <- betas
+df$posterior_sd <- susie_get_posterior_sd(res)
 df$cs <- cs
 
 df <- df[order(df$cs, decreasing = TRUE), ]
 cat("Saving susie output to", opt$o, "\n")
-colnames(df) = c("Gene", "SNP", "A1", "A2", "BETA", "SE", "P", "PIP", "POSTERIOR", "POSTERIOR_SD", "CS")
+colnames(df) = c("SNP", "A1", "A2", "BETA", "SE", "P", "PIP", "POSTERIOR", "POSTERIOR_SD", "CS")
 fwrite(x=df, file=opt$o, sep=" ", col.names=TRUE, row.names=FALSE, quote=FALSE)

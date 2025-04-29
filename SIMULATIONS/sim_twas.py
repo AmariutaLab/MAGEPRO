@@ -14,10 +14,11 @@
 
 from pandas_plink import read_plink
 import numpy as np
+import pandas as pd
 import scipy.linalg as linalg
 from scipy.stats import invgamma
 from scipy.stats import norm
-import pandas as pd
+
 import subprocess
 import os
 import argparse
@@ -30,27 +31,22 @@ from magepro_simulations_functions import (magepro_cv, top1_cv,
                                            fit_sparse_regularized_lm,
                                            load_process_sumstats,
                                            correlated_effects_cholesky,
-                                           create_betas)
+                                           create_betas,
+                                           PRSCSx_shrinkage,
+                                           prscsx_cv, allele_qc)
 
 NUMTARGET_LIST = [300]
 WINDOW = 500000
 
-NCAUSAL_ARR = [10] # number of causal SNPs for eQTL file
-
-# EQTL_H2_ARR = [0.01, 0.05, 0.1] # True heritability value
-# PHEN_VAR_GENE_COMPONENT = [0, 0.0001, 0.001, 0.01]
-# CORRELATIONS_GE = [0.2, 0.8]
-# GWAS_SAMPLE_SIZE = [20000, 100000, 600000]
-
+NCAUSAL_ARR = [4] # number of causal SNPs for eQTL file
 EQTL_H2_ARR = [0.01, 0.05, 0.1] # True heritability value
 PHEN_VAR_GENE_COMPONENT = [0, 0.0001, 0.001, 0.01]
-CORRELATIONS_GE = [0.2, 0.8, 1.0]
-
-GWAS_SAMPLE_SIZE = [20000, 600000]
+CORRELATIONS_GE = [0.2, 0.8]
+GWAS_SAMPLE_SIZE = [20000, 100000, 600000]
 
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
 SEP = "\t"
-OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}PRSCSx_R2{SEP}PRSCSx_Z{SEP}PRSCSx_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}METRO_DF{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR{SEP}MAGEPRO_PRSCSx_CORR{SEP}realized_h\n"""
+OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}PRSCSx_R2{SEP}PRSCSx_Z{SEP}PRSCSx_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}METRO_DF{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR{SEP}MAGEPRO_PRSCSx_CORR\n"""
 
 def get_ld(prefix):
     # return cholesky L
@@ -97,38 +93,6 @@ def sim_geno(L, n):
     return Z
 
 
-def sim_beta(L, ncausal, index_output, eqtl_h2, rescale=True):
-    """
-    Sample qtl effects under a specified architecture.
-
-    :param L: numpy.ndarray lower cholesky factor of the p x p LD matrix for the population
-    :param ncausal: int number of causal SNPs
-    :index_output: int index of causal SNP
-    :param eqtl_h2: float the heritability of gene expression
-    :param rescale: bool whether to rescale effects such that var(b V b) = h2 (default=True)
-
-    :return: numpy.ndarray of causal effects
-    """
-
-    n_snps = L.shape[0]
-    if eqtl_h2 != 0 and ncausal > 0:
-        # choose how many eQTLs
-        n_qtls = ncausal
-        c_qtls = index_output
-        b_qtls = np.zeros(int(n_snps))
-
-        # sample effects from normal prior
-        b_qtls[c_qtls] = np.random.normal(
-            loc=0, scale=np.sqrt(eqtl_h2 / n_qtls), size=n_qtls
-        )
-        if rescale:
-            s2g = compute_s2g(L, b_qtls)
-            b_qtls *= np.sqrt(eqtl_h2 / s2g)
-    else:
-        b_qtls = np.zeros(int(n_snps))
-    return b_qtls
-
-
 def sim_trait(g, h2g):
     """
     Simulate a complex trait as a function of latent genetic value and env noise.
@@ -143,7 +107,7 @@ def sim_trait(g, h2g):
         s2g = np.var(g, ddof=1)
         s2e = s2g * ( (1.0 / h2g ) - 1 )
         e = np.random.normal(0, np.sqrt(s2e), n)
-        y = g + e #appears to add noise to the genetic values, adding the same about of noise if the seed is the same 
+        y = g + e
     else:
         e = np.random.normal(0, 1, n)
         y = e
@@ -275,7 +239,7 @@ def get_gcta_hsq(geno, gexpr, output_path, gcta):
 
 
 def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
-                        gene_pref, plink_path, cNUM_PEOPLE):
+                        geno_pref, gene_path, plink_path, cNUM_PEOPLE):
     '''
         Builds SuSie Summary Statistics file
 
@@ -285,7 +249,8 @@ def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
         :sumstats_path: path to where to save sumstats
         :ld_path: path to where to save ld files
         :gene: gene name from @pick_rand_gene
-        :gene_pref: gene prefix with plink input
+        :geno_pref: genome prefix per chromosome
+        gene_path: full path for the gene
 
         :returns: filepath to fine mapped summary statistics, filepath to marginal summary statistics, filepath to snp-correlation 
 
@@ -301,7 +266,7 @@ def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
         pvals.append(results.pvalues[1])
         std_errs.append(results.bse[1])
     sumstats = pd.DataFrame({
-        'Gene': os.path.basename(gene),
+        # 'Gene': os.path.basename(gene),
         'SNP': bim['snp'],
         'A1': bim['a0'],
         'A2': bim['a1'],
@@ -312,17 +277,21 @@ def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
     filename_marginal = os.path.join(sumstats_path, gene + "marginal.txt")
     sumstats.to_csv(filename_marginal, sep="\t", index=False, header=True)
     ld_path_gene = os.path.join(ld_path, gene)
-
-    subprocess.run([plink_path, '--bfile', gene_pref, '--r', 'inter-chr',
-                    '--ld-window-r2', '0', '--keep-allele-order', '--extract',
-                    filename_marginal, '--out', ld_path_gene])
+    if os.path.exists(gene_path + "to_flip.snp"):
+        subprocess.run([plink_path, '--bfile', geno_pref, '--r', 'inter-chr',
+                        '--ld-window-r2', '0', '--a2-allele', gene_path + "to_flip.snp", '--extract',
+                        filename_marginal, '--out', ld_path_gene])
+    else:
+        subprocess.run([plink_path, '--bfile', geno_pref, '--r', 'inter-chr',
+                '--ld-window-r2', '0', '--extract',
+                filename_marginal, '--out', ld_path_gene])
 
     filename_susie = os.path.join(sumstats_path, gene + ".txt")
     subprocess.run(['Rscript', 'run_susie_twas.R',
                     '-c', filename_marginal,
                     '-l', ld_path_gene + ".ld",
                     '-n', str(cNUM_PEOPLE),
-                    '-b', gene_pref + ".bim",
+                    '-b', gene_path + ".bim",
                     '-o', filename_susie])
     return filename_susie, filename_marginal, ld_path_gene + ".ld"
 
@@ -566,13 +535,21 @@ def run_prscsx(target_gene,
         r2all, r2_top1, coef = top1_cv(num_people, Z_eqtl, gexpr)
 
     # --- PRSCSx
-    executable_dir="/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO/BENCHMARK/PRScsx"
+    executable_dir="/expanse/lustre/projects/ddp412/sgolzari/MAGEPRO/BENCHMARK/PRScsx"
     ld_reference_dir="/expanse/lustre/projects/ddp412/kakamatsu/eQTLsummary/multipopGE/benchmark/LD_ref"
     sumstats_files = ",".join(sumstats_files_external)
     population_sumstats = ",".join(pops_external)
-    samplesize_sumstats = ",".join([DEFAULT_NUM_OF_PEOPLE_EQTL]*2)
-    prscsx_weights = PRSCSx_shrinkage(executable_dir, ld_reference_dir, prscsx_tmp_path, sumstats_files, samplesize_sumstats, population_sumstats, bim, 1e-7)
-    prscsx_r2, prscsx_coef = prscsx_cv(num_people, z_eqtl, gexpr, prscsx_weights, best_penalty, 'lasso')
+    samplesize_sumstats = ",".join([str(DEFAULT_NUM_OF_PEOPLE_EQTL)]*len(pops_external))
+    ### We need a folder for prs_csx output
+    os.mkdir(prscsx_tmp_path)
+    prscsx_weights = PRSCSx_shrinkage(executable_dir, 
+                                      ld_reference_dir, 
+                                      prscsx_tmp_path,
+                                      sumstats_files,
+                                      samplesize_sumstats,
+                                      population_sumstats,
+                                      bim, 1e-7)
+    prscsx_r2, prscsx_coef = prscsx_cv(num_people, Z_eqtl, gexpr, prscsx_weights, best_penalty, 'lasso')
 
     return (prscsx_coef, prscsx_r2)
 
@@ -640,6 +617,47 @@ def compute_twas(gwas, coef, LD):
     return z_twas, p_twas
 
 
+def check_allele_flips(target_cohort, external_cohorts, plink_path):
+
+    bim, fam, G = read_plink(target_cohort)
+    bim.columns = ['CHR', 'SNP', 'CM', 'BP', 'A1', 'A2', 'index']
+    bim_np = np.array(bim)
+    snps_bim = pd.DataFrame(bim_np[:, 1], columns=['SNP'])
+
+    for external_cohort in external_cohorts:
+        bim_external, fam_external, G_external = read_plink(external_cohort)
+        bim_external.columns = ['CHR', 'SNP', 'CM', 'BP', 'A1', 'A2', 'index']
+        merged = bim_external.merge(snps_bim, on='SNP', how = 'inner')
+        merged = merged.set_index('SNP')
+        merged = merged.reindex(bim_np[:, 1])
+        merged = merged.fillna(0)
+        merged = merged.reset_index()
+        qc = allele_qc(pd.Series(bim_external['A1']), pd.Series(bim_external['A2']),
+                        pd.Series(bim_np[:, 4]), pd.Series(bim_np[:, 5]))
+
+        print("For gene:", os.path.basename(external_cohort))
+        print("Need to flip ", len(bim_external.loc[qc['flip']]), "out of ", len(bim_external))
+        print("Need to keep ", len(bim_external.loc[qc['keep']]), "out of ", len(bim_external))
+        to_flip_filename = external_cohort + "to_flip.snp"
+        to_exclude_filename = external_cohort + "to_exclude.snp"
+
+        bim.loc[qc['flip'], ['SNP', 'A2']].to_csv(
+            to_flip_filename,
+            index=False, header=False, sep="\t"
+        )
+        bim.loc[~qc['keep'], 'SNP'].to_csv(
+            to_exclude_filename,
+            index=False, header=False
+        )
+        subprocess.run([plink_path, '--bfile', external_cohort, 
+                        '--exclude', to_exclude_filename,
+                        '--a2-allele', to_flip_filename,
+                        '--make-bed', '--out', external_cohort])
+    
+        # subprocess.run(['rm', to_flip_filename])
+        # subprocess.run(['rm', to_exclude_filename])
+
+
 def arg_parser():
     parser = argparse.ArgumentParser(
         prog='Build simulation for TWAS.',
@@ -705,13 +723,14 @@ def main():
         print(f'LD_path_directory {curr_pop}', ld_path_directory)
         create_directory(ld_path_directory)
     
-    for i in range(5):
+    for i in range(25):
         print("Picking random gene. Number:", i)
         # pick random gene available in all populations
         random_gene_list, chr, min_num_snps = pick_rand_gene(
                                               args.plink_path,
                                               GENO_PREFIX_LIST, 
                                               rgenes)
+        check_allele_flips(random_gene_list[0], random_gene_list[1::], args.plink_path)
         for NUMTARGET in NUMTARGET_LIST:
             for NCAUSAL in NCAUSAL_ARR:
                 if NCAUSAL > min_num_snps:
@@ -730,23 +749,24 @@ def main():
                             marginal_sumstats_files = [] # for METRO, need marginal eQTL z scores per snp for each population
                             eqtl_snp_correlation_files = [] # for METRO, need snp correlation matrices for each population
                             eqtl_samplesizes = [] # for METRO, need sample sizes for each summary statistic 
-
-                            effects, realized_h = correlated_effects_cholesky(EQTL_H2,
+                            effects = correlated_effects_cholesky(
+                                                                EQTL_H2,
                                                                 EQTL_H2,
                                                                 EQTL_H2,
                                                                 corr=CORRELATION,
                                                                 nums=NCAUSAL)
-                            realized_h = ','.join(f"{x:.2e}" for x in realized_h.flatten())
                             # effects_df is a DataFrame, where columns are
                             # populations, rows represent SNP weights for causal 
                             # SNPs
                             effects_df = pd.DataFrame(effects)
+                            # if we have less <3 populations, we need to drop last column
+                            effects_df = effects_df.iloc[:, :len(POPS_LIST)]
                             effects_df.columns = POPS_LIST
 
                             ### We use this for loop to create summary statistics
                             for i, (rand_gene, geno_prefix, curr_pop) in enumerate(zip(random_gene_list, GENO_PREFIX_LIST, POPS_LIST)):
                                 # 1. Simulate LD, Simulate Genotypes
-                                print("Simlate LD and Genotypes")
+                                print("Simulate LD and Genotypes")
                                 bim, L = get_ld(rand_gene)
                                 CURR_NUM_PEOPLE = DEFAULT_NUM_OF_PEOPLE_EQTL
 
@@ -756,7 +776,7 @@ def main():
 
                                 Z = sim_geno(L, CURR_NUM_PEOPLE)
                                 # 2. Simulate Beta, Simulate Gene Expression
-                                print("Simulate Latent Betas and Gene Expression")
+                                print(f"Simulate Latent Betas and Gene Expression for {rand_gene}")
                                 beta = create_betas(effects=effects_df[curr_pop].values,
                                                 num_causal=NCAUSAL,
                                                 num_snps=L.shape[0],
@@ -782,17 +802,16 @@ def main():
                                     sumstats_path=sumstats_path,
                                     ld_path=ld_path,
                                     gene=curr_gene,
-                                    gene_pref=geno_prefix + chr,
+                                    gene_path=rand_gene,
+                                    geno_pref=geno_prefix + chr,
                                     plink_path=args.plink_path,
-                                    cNUM_PEOPLE=CURR_NUM_PEOPLE
-                                )
+                                    cNUM_PEOPLE=CURR_NUM_PEOPLE)
                                 if i != 0: # for target population, we do not need the fine-mapping results 
                                     sumstats_files_external.append(sumstat_output_file)
 
                                 marginal_sumstats_files.append(marginal_sumstats_file)
                                 eqtl_snp_correlation_files.append(snp_corr_plink_file)
                                 eqtl_samplesizes.append(CURR_NUM_PEOPLE)
-
                             # 4. Run MAGEPRO; target population is first
                             curr_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}'
                             gcta_output_path = os.path.join(args.tmpdir, curr_gene)
@@ -815,14 +834,15 @@ def main():
                                 print("Current genes:", random_gene_list)
                                 print("Summary statistics:", sumstats_files_external)
                                 continue
-                            print("Run PRSCSx for", curr_gene)
+
+                            print("Run PRSCSx for", curr_gene, prscsx_path_base)
                             tmp_path_prscsx = os.path.join(prscsx_path_base, curr_gene) 
                             prscsx_coef, prscsx_r2 = run_prscsx(
                                 target_gene=random_gene_list[0],
                                 Z_eqtl=simulated_genotypes[POPS_LIST[0]],
                                 b_qtls=simulated_betas[POPS_LIST[0]],
                                 gexpr=simulated_gexprs[POPS_LIST[0]],
-                                tmp_path=tmp_path_prscsx,
+                                prscsx_tmp_path=tmp_path_prscsx,
                                 pop=POPS_LIST[0],
                                 num_people=NUMTARGET,
                                 sumstats_files_external=sumstats_files_external,
@@ -841,9 +861,9 @@ def main():
                                                     H2GE)
                                 else:
                                     gwas = sim_gwasfast(simulated_ld[POPS_LIST[0]],
-                                                    NUM_GWAS,
-                                                    simulated_betas[POPS_LIST[0]] * alpha,
-                                                    H2GE)
+                                                        NUM_GWAS,
+                                                        simulated_betas[POPS_LIST[0]] * alpha,
+                                                        H2GE)
 
                                 LD_test = np.dot(simulated_ld[POPS_LIST[0]],
                                                 simulated_ld[POPS_LIST[0]].T)
@@ -891,11 +911,9 @@ def main():
                                 
                                 magepro_lasso_corr = np.corrcoef(magepro_coef, lasso_coef)[0, 1]
                                 magepro_prscsx_corr = np.corrcoef(magepro_coef, prscsx_coef)[0, 1]
-
-                                target_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}_{NUM_GWAS}'
                                 print('Writing row for:', curr_gene)
                                 with open(args.out, "a") as f:
-                                        f.write(f"""{curr_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{prscsx_r2}{SEP}{z_twas_prscsx}{SEP}{p_twas_prscsx}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{metro_df}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}{SEP}{magepro_prscsx_corr}{SEP}{realized_h}\n""")
+                                    f.write(f"""{curr_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{prscsx_r2}{SEP}{z_twas_prscsx}{SEP}{p_twas_prscsx}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{metro_df}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}{SEP}{magepro_prscsx_corr}\n""")
         # clean up
         # command = f'rm -rf {rgenes}'
         # subprocess.run(command.split())

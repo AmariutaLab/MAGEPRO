@@ -53,12 +53,13 @@ eQTL_paths = strsplit(opt$eqtl_files, split = ",")[[1]]
 eQTL_LD_paths = strsplit(opt$ld_matrices, split = ",")[[1]]
 eQTL_samplesizes = lapply(strsplit(opt$ns_of_people, split = ","), as.numeric)[[1]]
 pop_names = strsplit(opt$pop_names, split=",")[[1]]
+print(opt)
 cat("Current METRO gene is ", opt$output_folder, "\n")
 # read eQTL files
 eQTL_dfs = list()
 for (path in eQTL_paths){
     df <- fread(path, header=TRUE, dec=".")
-    colnames(df) = c("Gene", "SNP", "A1", "A2", "BETA", "SE", "P")
+    colnames(df) = c("SNP", "A1", "A2", "BETA", "SE", "P")
     if (length(eQTL_dfs) > 0){
         df <- df[match(eQTL_dfs[[length(eQTL_dfs)]]$SNP, df$SNP), ] # match snp order
         if (!all(df$SNP == eQTL_dfs[[length(eQTL_dfs)]]$SNP)){
@@ -137,13 +138,6 @@ if (anyNA(eQTLLDs[[1]])) {
   cat("No NA values in eQTLLDs[[1]]\n")
 }
 
-
-# METRORes2 <- METRO2SumStat(eQTLzscores,
-#                            eQTLLDMatrix,
-#                            GWASzscores, 
-#                            GWASLDMatrix,
-#                            ns,
-#                            n, verbose = T)
 metro_statistic = METRORes2$alpha # gene effect on GWAS outcome
 metro_p = METRORes2$pvalueLRT
 metro_lrtstat = METRORes2$LRTStat

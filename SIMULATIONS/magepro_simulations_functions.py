@@ -214,6 +214,10 @@ def correlated_effects_cholesky(h1, h2, h3, corr, nums):
         [corr * sigma1 * sigma2, sigma2**2, corr * sigma2 * sigma3],
         [corr * sigma1 * sigma3, corr * sigma2 * sigma3, sigma3**2]
     ])
+
+    if np.allclose(cov, cov[0, 0]):
+        cov += np.eye(3) * 1e-8
+
     L = np.linalg.cholesky(cov)
     effects = np.random.normal(loc=0, scale=1, size=(nums, 3))
     samples = effects @ L.T
@@ -485,7 +489,7 @@ def PRSCSx_shrinkage(exec_dir, ldref_dir, working_dir, input, ss, pp, BIM, phi):
 
     # run PRSCSx tool
     BIM = pd.DataFrame(BIM)
-    BIM.to_csv(os.path.join(working_dir, "snps.bim"), sep='\t', index=False, header=False, quoting=False)
+    BIM.to_csv(working_dir + "snps.bim", sep='\t', index=False, header=False, quoting=False)
     arg = f"python {exec_dir}/PRScsx.py --ref_dir={ldref_dir} --bim_prefix={working_dir}snps --sst_file={input} --n_gwas={ss} --pop={pp} --chrom={BIM.iloc[0, 0]} --phi={phi} --out_dir={working_dir} --out_name=results"
     subprocess.run(arg, shell=True, check=True)
 
