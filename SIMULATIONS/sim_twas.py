@@ -115,7 +115,6 @@ def sim_trait(g, h2g):
     # standardize
     y -= np.mean(y)
     y_std = np.std(y)
-    # TODO? try without y_std
     y /= y_std
 
     y_std = y_std.item()
@@ -191,7 +190,7 @@ def pick_rand_gene(plink_path, geno_prefix_path_list, random_genes_folder):
             if not os.path.exists(f'{output}.bim'):
                 flag = False
                 print(f"No SNPs found in the region for {output}.bim. Rerunning...")
-                subprocess.run(f'rm -rf {random_genes_folder}/*', shell=True)
+                subprocess.run(f'rm -rf {random_genes_folder}/{output}.*', shell=True)
                 break
         if flag == False:
             continue
@@ -205,7 +204,8 @@ def pick_rand_gene(plink_path, geno_prefix_path_list, random_genes_folder):
         min_snps = min(vars_random_gene_list)
         if min_snps < 50:
                 print('Not enough snps in chosen gene. Rerunning...')
-                subprocess.run(f'rm -rf {random_genes_folder}/*', shell=True)
+                for output in output_list:
+                    subprocess.run(f'rm -rf {random_genes_folder}/{output}.*', shell=True)
                 continue
 
         print('Successfully picked a random gene')
@@ -721,7 +721,7 @@ def main():
         print(f'LD_path_directory {curr_pop}', ld_path_directory)
         create_directory(ld_path_directory)
     
-    for i in range(25):
+    for i in range(20):
         print("Picking random gene. Number:", i)
         # pick random gene available in all populations
         random_gene_list, chr, min_num_snps = pick_rand_gene(
@@ -780,7 +780,7 @@ def main():
 
 
                                 # 2. Simulate Beta, Simulate Gene Expression
-                                print(f"Simulate Latent Betas and Gene Expression for {rand_gene}")
+                                print(f"Simulate Latent Betas and Gene Expression for {curr_gene}")
                                 beta = create_betas(effects=effects_df[curr_pop].values,
                                                 num_causal=NCAUSAL,
                                                 L=L,
