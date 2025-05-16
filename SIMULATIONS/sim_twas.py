@@ -37,25 +37,25 @@ from magepro_simulations_functions import (magepro_cv, top1_cv,
 
 NUMTARGET_LIST = [300]
 WINDOW = 500000
-
 NCAUSAL_ARR = [4] # number of causal SNPs for eQTL file
 EQTL_H2_ARR = [0.01, 0.05, 0.1] # True heritability value
 PHEN_VAR_GENE_COMPONENT = [0, 0.0001, 0.001, 0.01]
 CORRELATIONS_GE = [0.2, 0.8]
 GWAS_SAMPLE_SIZE = [20000, 100000, 600000]
-
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
 SEP = "\t"
-OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}HSQ{SEP}HSSQ_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}PRSCSx_R2{SEP}PRSCSx_Z{SEP}PRSCSx_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}METRO_DF{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR{SEP}MAGEPRO_PRSCSx_CORR\n"""
+OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}TARGET_HSQ{SEP}TARGET_HSQ_PV{SEP}EXT1_HSQ{SEP}EXT1_PV{SEP}EXT2_HSQ{SEP}EXT2_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}PRSCSx_R2{SEP}PRSCSx_Z{SEP}PRSCSx_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}METRO_DF{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR{SEP}MAGEPRO_PRSCSx_CORR\n"""
 
-def get_ld(prefix):
+def get_ld(prefix, output_path):
     # return cholesky L
     bim, fam, G = read_plink(prefix, verbose=False)
-    G = G.T # Transpose to have SNPs as columns
+    G = G.T # SNPs as columns
+
+    G = G.compute()  
 
     # estimate LD for population from PLINK data
     n_samples, n_snps = G.shape
-    mafs = (np.mean(G, axis=0) / 2).compute()
+    mafs = (np.mean(G, axis=0) / 2)
 
     # Center and standardize G
     G -= mafs * 2
@@ -73,8 +73,9 @@ def get_ld(prefix):
 
     # compute cholesky decomp for faster sampling/simulation
     L = linalg.cholesky(LD, lower=True)
-
-    return (bim, L)
+    np.savez(f'{output_path}.npz', LD=LD)
+    print("Saved LD in ", f'{output_path}.npz')
+    return (bim, L, output_path + ".npz")
 
 
 def sim_geno(L, n): 
@@ -89,7 +90,7 @@ def sim_geno(L, n):
     p, p = L.shape
     Z = L.dot(np.random.normal(size=(n, p)).T).T #pxn
     Z -= np.mean(Z, axis=0)
-    Z /= np.std(Z, axis=0) 
+    Z /= np.std(Z, axis=0)
     return Z
 
 
@@ -114,6 +115,7 @@ def sim_trait(g, h2g):
     # standardize
     y -= np.mean(y)
     y_std = np.std(y)
+    # TODO? try without y_std
     y /= y_std
 
     y_std = y_std.item()
@@ -164,6 +166,7 @@ def pick_rand_gene(plink_path, geno_prefix_path_list, random_genes_folder):
         start_pos = max(0, random_position - WINDOW)
         end_pos = random_position + WINDOW
 
+        print(f'Random position: {random_position}')
         print(f"Start Position: {start_pos}")
         print(f"End Position: {end_pos}")
 
@@ -238,8 +241,8 @@ def get_gcta_hsq(geno, gexpr, output_path, gcta):
         return 0, 10000, 1
 
 
-def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
-                        geno_pref, gene_path, plink_path, cNUM_PEOPLE):
+def build_susie_sumstats(bim, geno, gexpr, sumstats_path, gene_ld_path, gene,
+                         gene_path, plink_path, cNUM_PEOPLE):
     '''
         Builds SuSie Summary Statistics file
 
@@ -247,10 +250,9 @@ def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
         :geno: numpy.ndarray n x p centered/scaled genotype matrix
         :gexpr: (numpy.ndarray, float) simulated phenotype, sd of Y
         :sumstats_path: path to where to save sumstats
-        :ld_path: path to where to save ld files
+        :gene_ld_path: path to where gene ld is
         :gene: gene name from @pick_rand_gene
-        :geno_pref: genome prefix per chromosome
-        gene_path: full path for the gene
+        :gene_path: full path for the gene
 
         :returns: filepath to fine mapped summary statistics, filepath to marginal summary statistics, filepath to snp-correlation 
 
@@ -276,24 +278,16 @@ def build_susie_sumstats(bim, geno, gexpr, sumstats_path, ld_path, gene,
     })
     filename_marginal = os.path.join(sumstats_path, gene + "marginal.txt")
     sumstats.to_csv(filename_marginal, sep="\t", index=False, header=True)
-    ld_path_gene = os.path.join(ld_path, gene)
-    if os.path.exists(gene_path + "to_flip.snp"):
-        subprocess.run([plink_path, '--bfile', geno_pref, '--r', 'inter-chr',
-                        '--ld-window-r2', '0', '--a2-allele', gene_path + "to_flip.snp", '--extract',
-                        filename_marginal, '--out', ld_path_gene])
-    else:
-        subprocess.run([plink_path, '--bfile', geno_pref, '--r', 'inter-chr',
-                '--ld-window-r2', '0', '--extract',
-                filename_marginal, '--out', ld_path_gene])
 
     filename_susie = os.path.join(sumstats_path, gene + ".txt")
     subprocess.run(['Rscript', 'run_susie_twas.R',
                     '-c', filename_marginal,
-                    '-l', ld_path_gene + ".ld",
+                    '-l', gene_ld_path,
                     '-n', str(cNUM_PEOPLE),
                     '-b', gene_path + ".bim",
                     '-o', filename_susie])
-    return filename_susie, filename_marginal, ld_path_gene + ".ld"
+
+    return filename_susie, filename_marginal
 
 
 def clean_up(out):
@@ -649,10 +643,14 @@ def check_allele_flips(target_cohort, external_cohorts, plink_path):
             to_exclude_filename,
             index=False, header=False
         )
+        output_temporary = external_cohort + "tmp"
         subprocess.run([plink_path, '--bfile', external_cohort, 
                         '--exclude', to_exclude_filename,
                         '--a2-allele', to_flip_filename,
-                        '--make-bed', '--out', external_cohort])
+                        '--make-bed', '--out', output_temporary])
+        for ext in ['bed', 'bim', 'fam']:
+            print(f"replacing {output_temporary}.{ext} to {external_cohort}.{ext}")
+            os.replace(f"{output_temporary}.{ext}", f"{external_cohort}.{ext}")
     
         # subprocess.run(['rm', to_flip_filename])
         # subprocess.run(['rm', to_exclude_filename])
@@ -749,6 +747,7 @@ def main():
                             marginal_sumstats_files = [] # for METRO, need marginal eQTL z scores per snp for each population
                             eqtl_snp_correlation_files = [] # for METRO, need snp correlation matrices for each population
                             eqtl_samplesizes = [] # for METRO, need sample sizes for each summary statistic 
+                            gcta_estimations = []
                             effects = correlated_effects_cholesky(
                                                                 EQTL_H2,
                                                                 EQTL_H2,
@@ -767,23 +766,29 @@ def main():
                             for i, (rand_gene, geno_prefix, curr_pop) in enumerate(zip(random_gene_list, GENO_PREFIX_LIST, POPS_LIST)):
                                 # 1. Simulate LD, Simulate Genotypes
                                 print("Simulate LD and Genotypes")
-                                bim, L = get_ld(rand_gene)
-                                CURR_NUM_PEOPLE = DEFAULT_NUM_OF_PEOPLE_EQTL
 
+                                CURR_NUM_PEOPLE = DEFAULT_NUM_OF_PEOPLE_EQTL
                                 # target population is always first
                                 if i == 0:
                                     CURR_NUM_PEOPLE = NUMTARGET
 
+                                curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{CURR_NUM_PEOPLE}'
+                                ld_path = os.path.join(sumstats_path_base, curr_pop)
+                                bim, L, curr_gene_ld_path = get_ld(rand_gene,
+                                                os.path.join(ld_path, curr_gene))
                                 Z = sim_geno(L, CURR_NUM_PEOPLE)
+
+
                                 # 2. Simulate Beta, Simulate Gene Expression
                                 print(f"Simulate Latent Betas and Gene Expression for {rand_gene}")
                                 beta = create_betas(effects=effects_df[curr_pop].values,
                                                 num_causal=NCAUSAL,
-                                                num_snps=L.shape[0],
-                                                causal_index=index_causals)
+                                                L=L,
+                                                causal_index=index_causals,
+                                                eqtl_h2=EQTL_H2)
+
                                 gexpr = sim_trait(np.dot(Z, beta), EQTL_H2)[0]
                                 # 3. Build SuSiE summary statistics
-                                curr_gene = f'{os.path.basename(rand_gene)}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{CURR_NUM_PEOPLE}'
                                 print(f"Build SuSiE summary statistics for {curr_gene}")
                                 sumstats_path = os.path.join(sumstats_path_base, curr_pop)
                                 ld_path = os.path.join(sumstats_path_base, curr_pop)
@@ -795,23 +800,28 @@ def main():
 
                                 # we run build_susie_sumstats for both target and external population 
                                 # for target, we do not need to fine-mapping results, but the marginal eqtl z scores and snp correlation matrices are inputs to metro
-                                sumstat_output_file, marginal_sumstats_file, snp_corr_plink_file = build_susie_sumstats(
+                                sumstat_output_file, marginal_sumstats_file = build_susie_sumstats(
                                     bim=bim,
                                     geno=Z,
                                     gexpr=gexpr,
                                     sumstats_path=sumstats_path,
-                                    ld_path=ld_path,
+                                    gene_ld_path=curr_gene_ld_path,
                                     gene=curr_gene,
                                     gene_path=rand_gene,
-                                    geno_pref=geno_prefix + chr,
                                     plink_path=args.plink_path,
-                                    cNUM_PEOPLE=CURR_NUM_PEOPLE)
+                                    cNUM_PEOPLE=CURR_NUM_PEOPLE
+                                )
                                 if i != 0: # for target population, we do not need the fine-mapping results 
                                     sumstats_files_external.append(sumstat_output_file)
 
                                 marginal_sumstats_files.append(marginal_sumstats_file)
-                                eqtl_snp_correlation_files.append(snp_corr_plink_file)
+                                eqtl_snp_correlation_files.append(curr_gene_ld_path)
                                 eqtl_samplesizes.append(CURR_NUM_PEOPLE)
+
+                                gcta_output_path = os.path.join(args.tmpdir, curr_gene)
+
+                                h2g_curr, hsq_se_curr, hsq_p_curr = get_gcta_hsq(Z, gexpr, gcta_output_path, "/expanse/lustre/projects/ddp412/kakamatsu/fusion_twas-master/gcta_nr_robust")
+                                gcta_estimations.append((h2g_curr, hsq_p_curr))
                             # 4. Run MAGEPRO; target population is first
                             curr_gene = f'{os.path.basename(random_gene_list[0])}_{NCAUSAL}_{EQTL_H2:.5f}_{H2GE:.5f}_{CORRELATION}_{NUMTARGET}'
                             gcta_output_path = os.path.join(args.tmpdir, curr_gene)
@@ -913,7 +923,7 @@ def main():
                                 magepro_prscsx_corr = np.corrcoef(magepro_coef, prscsx_coef)[0, 1]
                                 print('Writing row for:', curr_gene)
                                 with open(args.out, "a") as f:
-                                    f.write(f"""{curr_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{prscsx_r2}{SEP}{z_twas_prscsx}{SEP}{p_twas_prscsx}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{metro_df}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}{SEP}{magepro_prscsx_corr}\n""")
+                                    f.write(f"""{curr_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{gcta_estimations[1][0]}{SEP}{gcta_estimations[1][1]}{SEP}{gcta_estimations[2][0]}{SEP}{gcta_estimations[2][1]}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{prscsx_r2}{SEP}{z_twas_prscsx}{SEP}{p_twas_prscsx}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{metro_df}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}{SEP}{magepro_prscsx_corr}\n""")
         # clean up
         # command = f'rm -rf {rgenes}'
         # subprocess.run(command.split())

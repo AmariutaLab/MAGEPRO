@@ -180,18 +180,60 @@ def sim_effect_sizes_only(h2g, num_causal):
         effect_sizes[0] = np.random.normal(mean, np.sqrt(variance))
     return effect_sizes
 
-def create_betas(effects, num_causal, num_snps, causal_index):
+# def create_betas(effects, num_causal, num_snps, causal_index):
+#     # effects = list of causal effect sizes
+#     # num_causal = number of causal variants
+#     # num_snps = number of snps
+#     # causal_index = list containing indices of causal variants (same order as effects)
+#     betas = np.zeros(num_snps)
+#     if num_causal >= 2:
+#         for index in range(num_causal):
+#             betas[causal_index[index]] = effects[index]
+#     else:
+#         betas[causal_index[0]] = effects[0]
+#     return betas
+
+
+def create_betas(effects, num_causal, L, causal_index, eqtl_h2):
     # effects = list of causal effect sizes
     # num_causal = number of causal variants
-    # num_snps = number of snps
+    # L = LD matrix for the gene
     # causal_index = list containing indices of causal variants (same order as effects)
+    # eqtl_h2 for current gene
+
+    num_snps = L.shape[0]
     betas = np.zeros(num_snps)
     if num_causal >= 2:
         for index in range(num_causal):
             betas[causal_index[index]] = effects[index]
     else:
         betas[causal_index[0]] = effects[0]
+
+    s2g = compute_s2g(L, betas)
+    betas *= np.sqrt(eqtl_h2 / s2g)
+
+    realized = np.sum(betas**2, axis=0)
+    print(f"Realized heritability: h1={realized:.4f}. Should be {eqtl_h2}")
     return betas
+
+
+def compute_s2g(L, beta):
+    """
+    Compute genetic variance given betas and LD cholesky factor
+
+    s2g := beta' V beta = beta' L L' beta
+
+    :param L: numpy.ndarray lower cholesky factor of the p x p LD matrix for the population
+    :param beta: numpy.ndarray genotype effects
+
+    :return: float s2g
+    """
+
+    Ltb = np.dot(L.T, beta)
+    s2g = np.dot(Ltb.T, Ltb)
+
+    return s2g
+
 
 def random_correlated_effect(effect1, heritability, correlation):
     # effect1 = first effect for which you want another effect that is correlated to it
@@ -346,10 +388,9 @@ def allele_qc(a1, a2, ref1, ref2):
 
 def load_process_sumstats(file_sumstats, bim_df, sep="\t"):
     # LOAD AND PROCESS SUMMARY STATISTICS (SUSIE POSTERIOR) FOR MAGEPRO 
-
     # If susie couldn't perform fine-mapping, we return.
     if os.path.exists(file_sumstats) == False:
-        return np.array(float('-inf')), np.array(float('-inf'))
+        return [float('-inf')], np.array(float('-inf'))
     # --- LOAD IN SUM STATS
     sumstats = pd.read_csv(file_sumstats, sep=sep)
 

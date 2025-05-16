@@ -1,10 +1,10 @@
 suppressMessages(library("optparse"))
 suppressMessages(library("data.table"))
 suppressMessages(library("dplyr"))
+suppressMessages(library('reticulate'))
 suppressMessages(library("METRO"))
 cat("Running run_metro.r\n")
 
-# NOTE THAT BY DEFAULT WE USE THE TARGET EQTL COHORT LD AS THE GWAS LD
 arg_parser <- function() {
     option_list <- list(
         make_option(c("-e", "--eqtl_files"), type = "character",
@@ -68,27 +68,19 @@ for (path in eQTL_paths){
     }
     eQTL_dfs = append(eQTL_dfs, list(df))
 }
-
-
-
-
 snp_list = eQTL_dfs[[1]]$SNP
-# print(eQTL_dfs)
+
 # read LD files
 eQTLLDs = list()
+np <- import("numpy")
 for (i in seq_along(eQTL_LD_paths)){
     path <- eQTL_LD_paths[i]
+    npz <- np$load(path)
+    LD_array <- npz$f[["LD"]] 
     pop <- pop_names[i]
-    ld_df <- fread(path, header=TRUE, dec=".")
-    # build matrix
-    ld_matrix <- matrix(NA, nrow = length(snp_list), ncol = length(snp_list), dimnames = list(snp_list, snp_list))
-    index_A <- match(ld_df$SNP_A, snp_list)
-    index_B <- match(ld_df$SNP_B, snp_list)
-
-    ld_matrix[cbind(index_A, index_B)] <- ld_df$R
-    ld_matrix[cbind(index_B, index_A)] <- ld_df$R
-    diag(ld_matrix) <- 1
-    eQTLLDs[[pop]] <- ld_matrix
+    LD_r <- as.matrix(LD_array)
+    dimnames(LD_r) <- list(snp_list, snp_list)
+    eQTLLDs[[pop]] <- LD_r
 }
 
 # create matrix of eQTL marginal z scores 
