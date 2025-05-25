@@ -18,6 +18,7 @@ import pandas as pd
 import scipy.linalg as linalg
 from scipy.stats import invgamma
 from scipy.stats import norm
+from sklearn.linear_model import LinearRegression
 
 import subprocess
 import os
@@ -44,7 +45,7 @@ CORRELATIONS_GE = [0.2, 0.8]
 GWAS_SAMPLE_SIZE = [20000, 100000, 600000]
 DEFAULT_NUM_OF_PEOPLE_EQTL = 500
 SEP = "\t"
-OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}TARGET_HSQ{SEP}TARGET_HSQ_PV{SEP}EXT1_HSQ{SEP}EXT1_PV{SEP}EXT2_HSQ{SEP}EXT2_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}PRSCSx_R2{SEP}PRSCSx_Z{SEP}PRSCSx_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}METRO_DF{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR{SEP}MAGEPRO_PRSCSx_CORR\n"""
+OUTPUT_COLUMNS = f"""GENE{SEP}EQTL_H2{SEP}H2GE{SEP}CORRELATION{SEP}NUM_GWAS{SEP}TARGET_HSQ{SEP}TARGET_HSQ_PV{SEP}EXT1_HSQ{SEP}EXT1_PV{SEP}EXT2_HSQ{SEP}EXT2_PV{SEP}MAGEPRO_R2{SEP}MAGEPRO_Z{SEP}MAGEPRO_PVAL{SEP}LASSO_R2{SEP}LASSO_Z{SEP}LASSO_PVAL{SEP}PRSCSx_R2{SEP}PRSCSx_Z{SEP}PRSCSx_PVAL{SEP}METRO_ALPHA{SEP}METRO_PVAL{SEP}METRO_LRT{SEP}METRO_DF{SEP}MAGEPRO_LASSO_CORR{SEP}MAGEPRO_METRO_CORR{SEP}MAGEPRO_PRSCSx_CORR{SEP}MAGEPRO_VAL_R2{SEP}LASSO_VAL_R2{SEP}PRSCSx_VAL_R2{SEP}METRO_VAL_R2\n"""
 
 def get_ld(prefix, output_path):
     # return cholesky L
@@ -655,6 +656,12 @@ def check_allele_flips(target_cohort, external_cohorts, plink_path):
         # subprocess.run(['rm', to_flip_filename])
         # subprocess.run(['rm', to_exclude_filename])
 
+def validate_genemodels(geno_val, coef, gexpr):
+    gexpr_predicted = np.dot(geno_val, coef)
+    lreg = LinearRegression().fit(gexpr_predicted.reshape(-1, 1), gexpr)
+    r2 = lreg.score(gexpr_predicted.reshape(-1, 1), gexpr)
+    return r2
+
 
 def arg_parser():
     parser = argparse.ArgumentParser(
@@ -788,6 +795,12 @@ def main():
                                                 eqtl_h2=EQTL_H2)
 
                                 gexpr = sim_trait(np.dot(Z, beta), EQTL_H2)[0]
+
+                                # 2.5 For target population, build validation cohort for gene models (test gene model from METRO -> does it actually predict GE well?)
+                                if i == 0:
+                                    Z_validation = sim_geno(L, CURR_NUM_PEOPLE/5) # fifth of the original training cohort
+                                    gexpr_validation = sim_trait(np.dot(Z_validation, beta), EQTL_H2)[0] # use the same beta
+
                                 # 3. Build SuSiE summary statistics
                                 print(f"Build SuSiE summary statistics for {curr_gene}")
                                 sumstats_path = os.path.join(sumstats_path_base, curr_pop)
@@ -921,9 +934,17 @@ def main():
                                 
                                 magepro_lasso_corr = np.corrcoef(magepro_coef, lasso_coef)[0, 1]
                                 magepro_prscsx_corr = np.corrcoef(magepro_coef, prscsx_coef)[0, 1]
+
+                                # we want to check if the resulting gene model from METRO predicts gene expression 
+                                # compute r-squared between validation genotype @ coef and gene expression
+                                metro_val_r2 = validate_genemodels(Z_validation, metro_betas, gexpr_validation)
+                                magepro_val_r2 = validate_genemodels(Z_validation, magepro_coef, gexpr_validation)
+                                lasso_val_r2 = validate_genemodels(Z_validation, lasso_coef, gexpr_validation)
+                                prscsx_val_r2 = validate_genemodels(Z_validation, prscsx_coef, gexpr_validation)
+
                                 print('Writing row for:', curr_gene)
                                 with open(args.out, "a") as f:
-                                    f.write(f"""{curr_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{gcta_estimations[1][0]}{SEP}{gcta_estimations[1][1]}{SEP}{gcta_estimations[2][0]}{SEP}{gcta_estimations[2][1]}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{prscsx_r2}{SEP}{z_twas_prscsx}{SEP}{p_twas_prscsx}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{metro_df}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}{SEP}{magepro_prscsx_corr}\n""")
+                                    f.write(f"""{curr_gene}{SEP}{EQTL_H2}{SEP}{H2GE}{SEP}{CORRELATION}{SEP}{NUM_GWAS}{SEP}{GCTA_h2}{SEP}{h2_pval}{SEP}{gcta_estimations[1][0]}{SEP}{gcta_estimations[1][1]}{SEP}{gcta_estimations[2][0]}{SEP}{gcta_estimations[2][1]}{SEP}{magepro_r2}{SEP}{z_twas_magepro}{SEP}{p_twas_magepro}{SEP}{lasso_r2}{SEP}{z_twas_lasso}{SEP}{p_twas_lasso}{SEP}{prscsx_r2}{SEP}{z_twas_prscsx}{SEP}{p_twas_prscsx}{SEP}{metro_alpha}{SEP}{metro_p}{SEP}{metro_lrt}{SEP}{metro_df}{SEP}{magepro_lasso_corr}{SEP}{magepro_metro_corr}{SEP}{magepro_prscsx_corr}{SEP}{magepro_val_r2}{SEP}{lasso_val_r2}{SEP}{prscsx_val_r2}{SEP}{metro_val_r2}\n""")
         # clean up
         # command = f'rm -rf {rgenes}'
         # subprocess.run(command.split())
