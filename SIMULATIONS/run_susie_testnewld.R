@@ -2,8 +2,6 @@ suppressMessages(library("optparse"))
 suppressMessages(library("data.table"))
 suppressMessages(library("dplyr"))
 suppressMessages(library("susieR"))
-suppressMessages(library('reticulate'))
-np <- import("numpy")
 
 # --- PARSE COMMAND LINE ARGUMENTS 
 
@@ -36,14 +34,11 @@ snp_list <- df[[1]]
 #ld_matrix[cbind(index_B, index_A)] <- ld_stats$R
 #diag(ld_matrix) <- 1
 
-npz <- np$load(opt$ld)
-LD_array <- npz$f[["LD"]]
-LD_r <- as.matrix(LD_array)
+#npz <- np$load(opt$ld)
+#LD_array <- npz$f[["LD"]]
+#LD_r <- as.matrix(LD_array)
+LD_r <- as.matrix(read.csv(opt$ld, header = FALSE))
 dimnames(LD_r) <- list(snp_list, snp_list)
-
-print(nrow(df))
-print(nrow(LD_r))
-quit()
 
 # run susie
 res <- susie_rss(bhat=df[[4]], shat=df[[5]], R=LD_r, n=opt$ss)

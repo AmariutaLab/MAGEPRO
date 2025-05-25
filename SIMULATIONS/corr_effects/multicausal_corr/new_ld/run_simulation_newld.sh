@@ -53,14 +53,21 @@ do
 		#extract genes for each population
 
 		#EUR 
-		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${eur_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/EUR_1KG_chr${chr}_${random_position}
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${eur_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw --maf 0.01
 
 		#AFR
-		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${afr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AFR_1KG_chr${chr}_${random_position}
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${afr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AFR_1KG_chr${chr}_${random_position}_raw --maf 0.01
 
-		#AMR
-		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${amr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AMR_1KG_chr${chr}_${random_position}
+		#AMR 
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${amr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw --maf 0.01
 
+		# find snps in common across populations
+		python find_common_snps.py --eur_bim ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw.bim --afr_bim ${randomgenes}/AFR_1KG_chr${chr}_${random_position}_raw.bim --amr_bim ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw.bim --output_file ${randomgenes}/chr${chr}_${random_position}_snps.txt
+
+		# filter the plink files to only include common snps
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/EUR_1KG_chr${chr}_${random_position}
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AFR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/AFR_1KG_chr${chr}_${random_position}
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/AMR_1KG_chr${chr}_${random_position}
 
 		if [ ! -e ${randomgenes}/EUR_1KG_chr${chr}_${random_position}.bim ] || [ ! -e ${randomgenes}/AFR_1KG_chr${chr}_${random_position}.bim ] || [ ! -e ${randomgenes}/AMR_1KG_chr${chr}_${random_position}.bim ]; then
     			echo "no snps remaining, pick another gene"
@@ -153,8 +160,8 @@ do
 
 
 		# run susie on summary statistics 
-		Rscript ../../../run_susie_testnewld.R --sumstats_file ${sumstatsdir}/sumstats_EUR.csv --ld ${lddir}/EUR_LD.npz --ss 500 --out ${sumstatsdir}/sumstats_EUR_susie.csv
-		Rscript ../../../run_susie_testnewld.R --sumstats_file ${sumstatsdir}/sumstats_AMR.csv --ld ${lddir}/AMR_LD.npz --ss 500 --out ${sumstatsdir}/sumstats_AMR_susie.csv
+		Rscript ../../../run_susie_testnewld.R --sumstats_file ${sumstatsdir}/sumstats_EUR.csv --ld ${lddir}/EUR_LD.csv --ss 500 --out ${sumstatsdir}/sumstats_EUR_susie.csv
+		Rscript ../../../run_susie_testnewld.R --sumstats_file ${sumstatsdir}/sumstats_AMR.csv --ld ${lddir}/AMR_LD.csv --ss 500 --out ${sumstatsdir}/sumstats_AMR_susie.csv
 
 		
 		# simulate AFR gene models with lasso 

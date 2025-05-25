@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --mem=2G
 #SBATCH -t 14:00:00
 #SBATCH -J sims_newld
 #SBATCH -A csd832
@@ -25,8 +25,8 @@ amr_geno_prefix=$7
 num_causal=$8
 threads=$9
 out=${10}
-#temp=/scratch/$USER/job_$SLURM_JOBID
-temp=/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO_SIMULATIONS_DIR/MAGEPRO_sims_scratch
+temp=/scratch/$USER/job_$SLURM_JOBID
+#temp=/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO_SIMULATIONS_DIR/MAGEPRO_sims_scratch
 
 echo "running simulations with $numafr AFR individuals and a gene with heritability $heritability / $heritability2 and effect size correlation $correlation"
 

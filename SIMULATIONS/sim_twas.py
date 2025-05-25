@@ -61,7 +61,7 @@ def get_ld(prefix, output_path):
     # Center and standardize G
     G -= mafs * 2
     std_devs = np.std(G, axis=0)
-    std_devs[std_devs == 0] = 1
+    #std_devs[std_devs == 0] = 1
     G /= std_devs
 
     # Regularize the LD matrix to make it Positive Semi Definite

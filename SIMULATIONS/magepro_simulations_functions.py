@@ -180,41 +180,41 @@ def sim_effect_sizes_only(h2g, num_causal):
         effect_sizes[0] = np.random.normal(mean, np.sqrt(variance))
     return effect_sizes
 
-# def create_betas(effects, num_causal, num_snps, causal_index):
-#     # effects = list of causal effect sizes
-#     # num_causal = number of causal variants
-#     # num_snps = number of snps
-#     # causal_index = list containing indices of causal variants (same order as effects)
-#     betas = np.zeros(num_snps)
-#     if num_causal >= 2:
-#         for index in range(num_causal):
-#             betas[causal_index[index]] = effects[index]
-#     else:
-#         betas[causal_index[0]] = effects[0]
-#     return betas
-
-
-def create_betas(effects, num_causal, L, causal_index, eqtl_h2):
+def create_betas(effects, num_causal, num_snps, causal_index):
     # effects = list of causal effect sizes
     # num_causal = number of causal variants
-    # L = LD matrix for the gene
+    # num_snps = number of snps
     # causal_index = list containing indices of causal variants (same order as effects)
-    # eqtl_h2 for current gene
-
-    num_snps = L.shape[0]
     betas = np.zeros(num_snps)
     if num_causal >= 2:
         for index in range(num_causal):
             betas[causal_index[index]] = effects[index]
     else:
         betas[causal_index[0]] = effects[0]
-
-    s2g = compute_s2g(L, betas)
-    betas *= np.sqrt(eqtl_h2 / s2g)
-
-    realized = np.sum(betas**2, axis=0)
-    print(f"Realized heritability: h1={realized:.4f}. Should be {eqtl_h2}")
     return betas
+
+
+#def create_betas(effects, num_causal, L, causal_index, eqtl_h2):
+    # effects = list of causal effect sizes
+    # num_causal = number of causal variants
+    # L = LD matrix for the gene
+    # causal_index = list containing indices of causal variants (same order as effects)
+    # eqtl_h2 for current gene
+
+#    num_snps = L.shape[0]
+#    betas = np.zeros(num_snps)
+#    if num_causal >= 2:
+#        for index in range(num_causal):
+#            betas[causal_index[index]] = effects[index]
+#    else:
+#        betas[causal_index[0]] = effects[0]
+
+#    s2g = compute_s2g(L, betas)
+#    betas *= np.sqrt(eqtl_h2 / s2g)
+
+#    realized = np.sum(betas**2, axis=0)
+#    print(f"Realized heritability: h1={realized:.4f}. Should be {eqtl_h2}")
+#    return betas
 
 
 def compute_s2g(L, beta):
