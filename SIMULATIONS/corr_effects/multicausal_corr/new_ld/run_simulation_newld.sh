@@ -50,7 +50,7 @@ do
 		echo $start_pos
 		echo $end_pos
 
-		#extract genes for each population
+		#extract genes for each population, subsetting to maf > 0.01
 
 		#EUR 
 		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${eur_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw --maf 0.01
@@ -61,10 +61,10 @@ do
 		#AMR 
 		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${amr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw --maf 0.01
 
-		# find snps in common across populations
+		# find snps in common across populations, maf > 0.01 in all pops
 		python find_common_snps.py --eur_bim ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw.bim --afr_bim ${randomgenes}/AFR_1KG_chr${chr}_${random_position}_raw.bim --amr_bim ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw.bim --output_file ${randomgenes}/chr${chr}_${random_position}_snps.txt
 
-		# filter the plink files to only include common snps
+		# filter the plink files to only include snps in common
 		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/EUR_1KG_chr${chr}_${random_position}
 		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AFR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/AFR_1KG_chr${chr}_${random_position}
 		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/AMR_1KG_chr${chr}_${random_position}

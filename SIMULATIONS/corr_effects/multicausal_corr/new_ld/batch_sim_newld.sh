@@ -4,11 +4,11 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
-#SBATCH -t 14:00:00
-#SBATCH -J sims_newld
+#SBATCH -t 24:00:00
+#SBATCH -J sims_newld_rerun
 #SBATCH -A csd832
-#SBATCH -o ../../../../../working_err/sims_newld.%j.%N.out
-#SBATCH -e ../../../../../working_err/sims_newld.%j.%N.err
+#SBATCH -o ../../../../../working_err/sims_newld_rerun.%j.%N.out
+#SBATCH -e ../../../../../working_err/sims_newld_rerun.%j.%N.err
 #SBATCH --export=ALL
 #SBATCH --constraint="lustre"
 

@@ -16,7 +16,7 @@ threads=4
 num_causal_list=(4)
 
 #jobs=(1 2 3 4 5 6 7 8 9 10)
-jobs=(1 2) # 2,000 simulations 
+jobs=(1 2) # 200 simulations 
 #jobs=(1)
 for num_causal in "${num_causal_list[@]}"; do
     for job in "${jobs[@]}"; do
