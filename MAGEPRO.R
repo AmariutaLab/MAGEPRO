@@ -583,6 +583,12 @@ if ( ("MAGEPRO" %in% model) & (ext > 0) ){
 	for (loaded in loaded_datasets){
         name <- strsplit(loaded, split="[.]")[[1]][2]
 		if (susie_status[[name]]){
+			if (opt$skip_susie) {
+                if (opt$verbose >= 1) cat("... [HARDCODED] Overwriting Column 9 with Random Effects for", name, "\n")
+                df_temp <- get(loaded)
+                df_temp[,7] <- rnorm(nrow(df_temp), mean=0, sd=1)
+                assign(loaded, df_temp)
+            }
 			wgt_magepro <- datasets_process_susie(name, eval(parse(text = loaded)), wgt_magepro)
 		}
 	}
