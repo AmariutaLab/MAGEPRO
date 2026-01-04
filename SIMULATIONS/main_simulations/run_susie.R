@@ -1,3 +1,5 @@
+# version that reads correlation matrix from plink.ld format 
+
 suppressMessages(library("optparse"))
 suppressMessages(library("data.table"))
 suppressMessages(library("dplyr"))
@@ -8,8 +10,8 @@ suppressMessages(library("susieR"))
 option_list = list(
     make_option("--sumstats_file", action="store", default=NA, type='character',
               help="Path to summary statistics"),
-    make_option("--ld", action="store", default=NA, type='character',
-              help="Path to ld file .npz"),
+    make_option("--ld_plink", action="store", default=NA, type='character',
+              help="Path to plink .ld file"),
     make_option("--ss", action="store", default=NA, type='double',
               help="Sample-size of dataset"),
     make_option("--out", action="store", default=NA, type='character',
@@ -20,28 +22,22 @@ opt = parse_args(OptionParser(option_list=option_list))
 
 # read files 
 df <- fread(opt$sumstats_file, header=TRUE)
-#ld_stats <- fread(opt$ld_plink, header=TRUE, sep=" ")
+ld_stats <- fread(opt$ld_plink, header=TRUE, sep=" ")
 
 # get unique SNPs that are both in ld matrix and gene file
-#df <- df[df[[1]] %in% (union(ld_stats$SNP_A, ld_stats$SNP_B))]
+df <- df[df[[1]] %in% (union(ld_stats$SNP_A, ld_stats$SNP_B))]
 snp_list <- df[[1]]
 
 # build the ld matrix
-#ld_matrix <- matrix(NA, nrow = length(snp_list), ncol = length(snp_list), dimnames = list(snp_list, snp_list))
-#index_A <- match(ld_stats$SNP_A, snp_list)
-#index_B <- match(ld_stats$SNP_B, snp_list)
-#ld_matrix[cbind(index_A, index_B)] <- ld_stats$R
-#ld_matrix[cbind(index_B, index_A)] <- ld_stats$R
-#diag(ld_matrix) <- 1
-
-#npz <- np$load(opt$ld)
-#LD_array <- npz$f[["LD"]]
-#LD_r <- as.matrix(LD_array)
-LD_r <- as.matrix(read.csv(opt$ld, header = FALSE))
-dimnames(LD_r) <- list(snp_list, snp_list)
+ld_matrix <- matrix(NA, nrow = length(snp_list), ncol = length(snp_list), dimnames = list(snp_list, snp_list))
+index_A <- match(ld_stats$SNP_A, snp_list)
+index_B <- match(ld_stats$SNP_B, snp_list)
+ld_matrix[cbind(index_A, index_B)] <- ld_stats$R
+ld_matrix[cbind(index_B, index_A)] <- ld_stats$R
+diag(ld_matrix) <- 1
 
 # run susie
-res <- susie_rss(bhat=df[[4]], shat=df[[5]], R=LD_r, n=opt$ss)
+res <- susie_rss(bhat=df[[4]], shat=df[[5]], R=ld_matrix, n=opt$ss)
 
 # create credible set column
 cs <- rep(-1, length(df[[5]]))

@@ -3,15 +3,6 @@
 #   https://github.com/mancusolab/twas_sim?tab=readme-ov-file
 
 
-
-### NOTES TO STEPHEN: 
-# I changed build_susie_sumstats to save the marginal eQTL summary statistics and LD correlation matrices, which is necessary for METRO
-# I wrote the scripts to be able to run METRO. I tested everything up to actually running the METRO function because I could not get the environment to work. 
-    # The inputs are formatted as METRO expects it so everything should run in theory
-# TO-DO: 
-    # could you double check line 707 to make sure the LD matrix used is the target population LD matrix? It seems to me like LD there is whatever comes last in the populations list? 
-    # line 732, when we get the betas from METRO, I want to calculate the R-squared between true African gene expression and the ones predicted by METRO betas. However, this isn't really a cross validation because these betas are from a linear combination of marginal betas computed in each cohort... any thoughts?
-
 from pandas_plink import read_plink
 import numpy as np
 import pandas as pd

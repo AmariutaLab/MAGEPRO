@@ -1,0 +1,5 @@
+Some old results from when we were having trouble getting METRO to converge.
+
+Making sure the SNPs included are MAF > 0.01 helped the model converge in some cases. There are several simulated genes for which METRO still did not converge but we were unable to identify a pattern among these genes. We subset to genes for which METRO converged for our analysis reported. 
+
+Not included in paper so feel free to ignore

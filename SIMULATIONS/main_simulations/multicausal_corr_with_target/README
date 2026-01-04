@@ -1,0 +1,5 @@
+version of simulations with...
+	- multiple causal variants 
+	- causal effect sizes sampled in each external population to be correlated with the target population (not explicitely with each other)
+
+not the scripts used for main simulation, but empirically results are consistent in this version of simulations 

@@ -3,12 +3,12 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
-#SBATCH -t 14:00:00
-#SBATCH -J mismatch_h2_setting_0.1_0.05
+#SBATCH --mem=2G
+#SBATCH -t 24:00:00
+#SBATCH -J sims_newld
 #SBATCH -A csd832
-#SBATCH -o ../../../../../working_err/mismatch_h2_setting_0.1_0.05.%j.%N.out
-#SBATCH -e ../../../../../working_err/mismatch_h2_setting_0.1_0.05.%j.%N.err
+#SBATCH -o /expanse/lustre/projects/ddp412/kakamatsu/working_err/sims_newld.%j.%N.out
+#SBATCH -e /expanse/lustre/projects/ddp412/kakamatsu/working_err/sims_newld.%j.%N.err
 #SBATCH --export=ALL
 #SBATCH --constraint="lustre"
 
@@ -30,4 +30,4 @@ temp=/scratch/$USER/job_$SLURM_JOBID
 
 echo "running simulations with $numafr AFR individuals and a gene with heritability $heritability / $heritability2 and effect size correlation $correlation"
 
-bash run_simulation_mismatch_h2.sh $numafr $heritability $heritability2 $correlation $eur_geno_prefix $afr_geno_prefix $amr_geno_prefix $num_causal $threads $out $temp
+bash run_simulation_newld.sh $numafr $heritability $heritability2 $correlation $eur_geno_prefix $afr_geno_prefix $amr_geno_prefix $num_causal $threads $out $temp

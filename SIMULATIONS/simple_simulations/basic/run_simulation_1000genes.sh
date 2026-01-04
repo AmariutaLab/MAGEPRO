@@ -145,8 +145,8 @@ for ((i=1; i<=100; i++));do
 
 
 		# run susie on summary statistics 
-		Rscript ../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_EUR.csv --ld_plink ${lddir}/EUR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_EUR_susie.csv
-		Rscript ../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_AMR.csv --ld_plink ${lddir}/AMR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_AMR_susie.csv
+		Rscript ../../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_EUR.csv --ld_plink ${lddir}/EUR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_EUR_susie.csv
+		Rscript ../../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_AMR.csv --ld_plink ${lddir}/AMR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_AMR_susie.csv
 
 		# simulate AFR gene models with lasso 
 		# use MAGEPRO 

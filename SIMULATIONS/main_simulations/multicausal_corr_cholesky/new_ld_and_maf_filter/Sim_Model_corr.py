@@ -101,6 +101,8 @@ prscsx_working_dir=temp_dir+"/PRSCSx/"
 prscsx_weights = PRSCSx_shrinkage(executable_dir, ld_reference_dir, prscsx_working_dir, sumstats_file, "500,500" , population_sumstat, bim, 1e-7)
 prscsx_r2, prscsx_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_lasso, 'lasso')
 prscsx_enet_r2, prscsx_enet_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_enet, 'enet')
+#prscsx_r2, prscsx_coef = prscsx_cv_retune(samplesizes, z_eqtl, gexpr, prscsx_weights, 'lasso')
+#prscsx_enet_r2, prscsx_enet_coef = prscsx_cv_retune(samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet')
 
 # --- PROCESS SUMMARY STATISTICS
 num_causal_susie = 0
@@ -114,6 +116,8 @@ for i in range(0,len(sumstats_files)):
 # --- RUN CV MAGEPRO 
 magepro_r2, magepro_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_lasso, 'lasso')
 magepro_enet_r2, magepro_enet_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_enet, 'enet')
+#magepro_r2, magepro_coef = magepro_cv_retune(samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso')
+#magepro_enet_r2, magepro_enet_coef = magepro_cv_retune(samplesizes, z_eqtl, gexpr, sumstats_weights, 'enet')
 
 print("magepro lasso: ")
 print(magepro_r2)
@@ -163,8 +167,20 @@ true_B_causal = beta_causal
 filename = out_results + "/magepro_results_" + str(samplesizes) + "_h" + str(set_h2) + ".csv"
 
 output = pd.DataFrame({'sim': sim, 'afr_h2': h2g, 'lasso_causal': lasso_causal_nonzero, 'enet_causal': enet_causal_nonzero, 'magepro_causal': magepro_causal_nonzero, 'magepro_enet_causal': magepro_enet_causal_nonzero, 'prscsx_causal': prscsx_causal_nonzero, 'prscsx_enet_causal': prscsx_enet_causal_nonzero, 'afr_beta_causal': afr_B_causal, 'afr_enet_beta_causal': afr_enet_B_causal, 'magepro_beta_causal': magepro_B_causal, 'magepro_enet_beta_causal': magepro_enet_B_causal, 'prscsx_beta_causal': prscsx_B_causal, 'prscsx_enet_beta_causal': prscsx_enet_B_causal, 'true_B_causal': true_B_causal, 'afr_r2': r2_lasso, 'afr_enet_r2': r2_enet, 'magepro_r2': magepro_r2, 'magepro_enet_r2': magepro_enet_r2, 'prscsx_r2': prscsx_r2, 'prscsx_enet_r2': prscsx_enet_r2, 'causal_susie': num_causal_susie}, index=[0])
-if sim == 1:
-    output.to_csv(filename, sep="\t", index=False, header = True)
-else:
-    output.to_csv(filename, sep="\t", index=False, header = False, mode='a')
+
+if sim != 1 and not path.exists(filename):
+    print("WARNING: first iteration crashed, check error files")
+
+output.to_csv(
+    filename,
+    sep="\t",
+    index=False,
+    header=not path.exists(filename),
+    mode='a'
+)
+
+#if sim == 1:
+    #output.to_csv(filename, sep="\t", index=False, header = True)
+#else:
+    #output.to_csv(filename, sep="\t", index=False, header = False, mode='a')
 

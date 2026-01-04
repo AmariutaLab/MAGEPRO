@@ -1,3 +1,6 @@
+# running susie for TWAS simulations 
+# kind of confusing to have multiple versions of this file, but inputs were of different format
+
 suppressMessages(library("optparse"))
 suppressMessages(library("susieR"))
 suppressMessages(library("data.table"))

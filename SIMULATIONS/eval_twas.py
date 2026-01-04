@@ -73,14 +73,6 @@ path = "/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO_TWAS_SIMULATIONS/resul
 
 df = pd.read_csv(path, sep = '\t')
 
-print(df.head())
-
-# --- script from stephen to clean results - remove when METRO returns NaN 
-#df_metro_noconverge = df[df['METRO_PVAL'].isna()]
-#df_metro_noconverge_counts = df_metro_noconverge.groupby(['EQTL_H2', 'H2GE', 'CORRELATION', 'NUM_GWAS']).size().reset_index(name='count')
-#df_metro_noconverge_counts.to_csv("/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO/SIMULATIONS/twas_sim_results/twas_metro_noconverge_counts_06_27.txt", sep = '\t', header = True, index = False)
-
-
 if args[0] == 'True' or args[0] == True:
     df = df[~df['METRO_PVAL'].isna()] # removes NaNs
 

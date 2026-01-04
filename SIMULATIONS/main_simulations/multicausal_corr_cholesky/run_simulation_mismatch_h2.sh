@@ -1,8 +1,12 @@
+# "mismatch heritability" refers to a version of this simulation script that allows different heritabilities for target and extern populations 
+	# sorry if the name is confusing
+	# we also use this for main simulations when heritabilities are the same across populations, just by setting heritability and heritability2 to the same value 	
+
 # simulate a random gene and create plink files for that 1MB region 
 numsafr_s=$1
 IFS=',' read -ra numsafr <<< $numsafr_s
-heritability=$2
-heritability2=$3
+heritability=$2 # heritability in target population
+heritability2=$3 # heritability in external populations 
 correlation=$4
 eur_geno_prefix=$5
 afr_geno_prefix=$6
@@ -128,9 +132,9 @@ do
 		fi
 
 		# simulate genotypes using python script
-		python3 ../../../Sim_geno.py ${randomgenes}/EUR_1KG_chr${chr}_${random_position} 500 EUR ${simgeno}
-		python3 ../../../Sim_geno.py ${randomgenes}/AMR_1KG_chr${chr}_${random_position} 500 AMR ${simgeno}
-		python3 ../../../Sim_geno.py ${randomgenes}/AFR_1KG_chr${chr}_${random_position} $numafr AFR ${simgeno}
+		python3 ../Sim_geno.py ${randomgenes}/EUR_1KG_chr${chr}_${random_position} 500 EUR ${simgeno} ${lddir}
+		python3 ../Sim_geno.py ${randomgenes}/AMR_1KG_chr${chr}_${random_position} 500 AMR ${simgeno} ${lddir}
+		python3 ../Sim_geno.py ${randomgenes}/AFR_1KG_chr${chr}_${random_position} $numafr AFR ${simgeno} ${lddir}
 
 		# simulation effects
 		python3 Sim_Effects.py $num_causal $heritability $heritability2 $heritability2 $correlation AFR,EUR,AMR $tempdir/effects.txt
@@ -153,8 +157,8 @@ do
 
 
 		# run susie on summary statistics 
-		Rscript ../../../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_EUR.csv --ld_plink ${lddir}/EUR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_EUR_susie.csv
-		Rscript ../../../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_AMR.csv --ld_plink ${lddir}/AMR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_AMR_susie.csv
+		Rscript ../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_EUR.csv --ld_plink ${lddir}/EUR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_EUR_susie.csv
+		Rscript ../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_AMR.csv --ld_plink ${lddir}/AMR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_AMR_susie.csv
 
 		
 		# simulate AFR gene models with lasso 

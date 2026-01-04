@@ -2,14 +2,15 @@
 numsafr_s=$1
 IFS=',' read -ra numsafr <<< $numsafr_s
 heritability=$2
-correlation=$3
-eur_geno_prefix=$4
-afr_geno_prefix=$5
-amr_geno_prefix=$6
-num_causal=$7
-threads=$8
-out=$9
-temp=${10}
+heritability2=$3
+correlation=$4
+eur_geno_prefix=$5
+afr_geno_prefix=$6
+amr_geno_prefix=$7
+num_causal=$8
+threads=$9
+out=${10}
+temp=${11}
 
 export MKL_NUM_THREADS=$threads
 export NUMEXPR_NUM_THREADS=$threads
@@ -49,17 +50,24 @@ do
 		echo $start_pos
 		echo $end_pos
 
-		#extract genes for each population
+		#extract genes for each population, subsetting to maf > 0.01
 
 		#EUR 
-		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${eur_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/EUR_1KG_chr${chr}_${random_position}
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${eur_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw --maf 0.01
 
 		#AFR
-		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${afr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AFR_1KG_chr${chr}_${random_position}
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${afr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AFR_1KG_chr${chr}_${random_position}_raw --maf 0.01
 
-		#AMR
-		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${amr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AMR_1KG_chr${chr}_${random_position}
+		#AMR 
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${amr_geno_prefix}${chr} --chr $chr --from-bp $start_pos --to-bp $end_pos --make-bed --out ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw --maf 0.01
 
+		# find snps in common across populations, maf > 0.01 in all pops
+		python find_common_snps.py --eur_bim ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw.bim --afr_bim ${randomgenes}/AFR_1KG_chr${chr}_${random_position}_raw.bim --amr_bim ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw.bim --output_file ${randomgenes}/chr${chr}_${random_position}_snps.txt
+
+		# filter the plink files to only include snps in common
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/EUR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/EUR_1KG_chr${chr}_${random_position}
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AFR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/AFR_1KG_chr${chr}_${random_position}
+		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AMR_1KG_chr${chr}_${random_position}_raw --extract ${randomgenes}/chr${chr}_${random_position}_snps.txt --make-bed --out ${randomgenes}/AMR_1KG_chr${chr}_${random_position}
 
 		if [ ! -e ${randomgenes}/EUR_1KG_chr${chr}_${random_position}.bim ] || [ ! -e ${randomgenes}/AFR_1KG_chr${chr}_${random_position}.bim ] || [ ! -e ${randomgenes}/AMR_1KG_chr${chr}_${random_position}.bim ]; then
     			echo "no snps remaining, pick another gene"
@@ -127,38 +135,39 @@ do
 		fi
 
 		# simulate genotypes using python script
-		python3 ../../Sim_geno.py ${randomgenes}/EUR_1KG_chr${chr}_${random_position} 500 EUR ${simgeno}
-		python3 ../../Sim_geno.py ${randomgenes}/AMR_1KG_chr${chr}_${random_position} 500 AMR ${simgeno}
-		python3 ../../Sim_geno.py ${randomgenes}/AFR_1KG_chr${chr}_${random_position} $numafr AFR ${simgeno}
+		python3 ../../Sim_geno.py ${randomgenes}/EUR_1KG_chr${chr}_${random_position} 500 EUR ${simgeno} ${lddir}
+		python3 ../../Sim_geno.py ${randomgenes}/AMR_1KG_chr${chr}_${random_position} 500 AMR ${simgeno} ${lddir}
+		python3 ../../Sim_geno.py ${randomgenes}/AFR_1KG_chr${chr}_${random_position} $numafr AFR ${simgeno} ${lddir}
 
-		# simulation target population causal effect size first 
-		target_causal_effect=$(python3 ../Sim_Effect_pop1.py $num_causal $heritability)
+		# simulation effects 
+		python3 Sim_Effects.py $num_causal $heritability $heritability2 $heritability2 $correlation AFR,EUR,AMR $tempdir/effects.txt
 
 		# simulate eqtl analysis to produce EUR full sum stats 
 		#python3 Sim_SumStats.py <path to plink files> <sample size> <population> <simulated genotypes> <number of causal snps> <index of causal> <simulation number> <heritability of gene> <sample size of target pop> <sumstats dir> <tempdir> <outdir> <threads>
-		python3 ../Sim_SumStats_corr.py ${randomgenes}/EUR_1KG_chr${chr}_${random_position} 500 EUR ${simgeno}/simulated_genotypes_EUR.csv $num_causal $causal_indices $i $heritability $target_causal_effect $correlation $numafr $sumstatsdir $tempdir ${out} $threads
-		python3 ../Sim_SumStats_corr.py ${randomgenes}/AMR_1KG_chr${chr}_${random_position} 500 AMR ${simgeno}/simulated_genotypes_AMR.csv $num_causal $causal_indices $i $heritability $target_causal_effect $correlation $numafr $sumstatsdir $tempdir ${out} $threads
+		python3 Sim_SumStats_corr.py ${randomgenes}/EUR_1KG_chr${chr}_${random_position} 500 EUR ${simgeno}/simulated_genotypes_EUR.csv $num_causal $causal_indices $i $heritability2 $tempdir/effects.txt $correlation $numafr $sumstatsdir $tempdir ${out} $threads
+		python3 Sim_SumStats_corr.py ${randomgenes}/AMR_1KG_chr${chr}_${random_position} 500 AMR ${simgeno}/simulated_genotypes_AMR.csv $num_causal $causal_indices $i $heritability2 $tempdir/effects.txt $correlation $numafr $sumstatsdir $tempdir ${out} $threads
 
-		# EUR
+		# EUR - LD created in Sim_geno.py
 		#/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/EUR_1KG_chr${chr}_${random_position} --clump ${sumstatsdir}/sumstats_EUR.csv --clump-p1 1 --clump-r2 0.97 --out ${sumstatsdir}/EUR_1KG_chr${chr}_${random_position}_pruned
 		#/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/EUR_1KG_chr${chr}_${random_position} --r2 inter-chr --ld-window-r2 0 --extract ${sumstatsdir}/EUR_1KG_chr${chr}_${random_position}_pruned.clumped --out ${lddir}/EUR_1KG_chr${chr}_${random_position}
-		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/EUR_1KG_chr${chr}_${random_position} --r inter-chr --ld-window-r2 0 --keep-allele-order --extract ${sumstatsdir}/sumstats_EUR.csv --out ${lddir}/EUR_1KG_chr${chr}_${random_position}
+		#/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/EUR_1KG_chr${chr}_${random_position} --r inter-chr --ld-window-r2 0 --keep-allele-order --extract ${sumstatsdir}/sumstats_EUR.csv --out ${lddir}/EUR_1KG_chr${chr}_${random_position}
 	
 
-		# AMR
+		# AMR - LD created in Sim_geno.py
 		#/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AMR_1KG_chr${chr}_${random_position} --clump ${sumstatsdir}/sumstats_AMR.csv --clump-p1 1 --clump-r2 0.97 --out ${sumstatsdir}/AMR_1KG_chr${chr}_${random_position}_pruned
 		#/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AMR_1KG_chr${chr}_${random_position} --r2 inter-chr --ld-window-r2 0 --extract ${sumstatsdir}/AMR_1KG_chr${chr}_${random_position}_pruned.clumped --out ${lddir}/AMR_1KG_chr${chr}_${random_position}
-		/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AMR_1KG_chr${chr}_${random_position} --r inter-chr --ld-window-r2 0 --keep-allele-order --extract ${sumstatsdir}/sumstats_AMR.csv --out ${lddir}/AMR_1KG_chr${chr}_${random_position}
+		#/expanse/lustre/projects/ddp412/kakamatsu/plink --bfile ${randomgenes}/AMR_1KG_chr${chr}_${random_position} --r inter-chr --ld-window-r2 0 --keep-allele-order --extract ${sumstatsdir}/sumstats_AMR.csv --out ${lddir}/AMR_1KG_chr${chr}_${random_position}
 
 
 		# run susie on summary statistics 
-		Rscript ../../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_EUR.csv --ld_plink ${lddir}/EUR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_EUR_susie.csv
-		Rscript ../../run_susie.R --sumstats_file ${sumstatsdir}/sumstats_AMR.csv --ld_plink ${lddir}/AMR_1KG_chr${chr}_${random_position}.ld --ss 500 --out ${sumstatsdir}/sumstats_AMR_susie.csv
+		Rscript ../../run_susie_testnewld.R --sumstats_file ${sumstatsdir}/sumstats_EUR.csv --ld ${lddir}/EUR_LD.csv --ss 500 --out ${sumstatsdir}/sumstats_EUR_susie.csv
+		Rscript ../../run_susie_testnewld.R --sumstats_file ${sumstatsdir}/sumstats_AMR.csv --ld ${lddir}/AMR_LD.csv --ss 500 --out ${sumstatsdir}/sumstats_AMR_susie.csv
 
 		
 		# simulate AFR gene models with lasso 
 		# use MAGEPRO 
 		#python3 Sim_Model_multi.py <path to plink files> <sample size> <population> <simulated genotypes> <sumstats> <populations> <number of causal snps> <index of causal> <simulation number> <heritability of gene> <temporary directory> <output directory> <threads>
-		python3 ../Sim_Model_corr.py ${randomgenes}/AFR_1KG_chr${chr}_${random_position} $numafr AFR ${simgeno}/simulated_genotypes_AFR.csv ${sumstatsdir}/sumstats_EUR_susie.csv,${sumstatsdir}/sumstats_AMR_susie.csv EUR,AMR $num_causal $causal_indices $i $heritability $target_causal_effect $tempdir ${out} $threads
+		python3 Sim_Model_corr.py ${randomgenes}/AFR_1KG_chr${chr}_${random_position} $numafr AFR ${simgeno}/simulated_genotypes_AFR.csv ${sumstatsdir}/sumstats_EUR_susie.csv,${sumstatsdir}/sumstats_AMR_susie.csv EUR,AMR $num_causal $causal_indices $i $heritability $tempdir/effects.txt $tempdir ${out} $threads
+
 	done
 done
