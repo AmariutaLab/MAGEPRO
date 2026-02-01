@@ -101,8 +101,10 @@ prscsx_working_dir=temp_dir+"/PRSCSx/"
 prscsx_weights = PRSCSx_shrinkage(executable_dir, ld_reference_dir, prscsx_working_dir, sumstats_file, "500,500" , population_sumstat, bim, 1e-7)
 prscsx_r2, prscsx_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_lasso, 'lasso')
 prscsx_enet_r2, prscsx_enet_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_enet, 'enet')
-#prscsx_r2, prscsx_coef = prscsx_cv_retune(samplesizes, z_eqtl, gexpr, prscsx_weights, 'lasso')
-#prscsx_enet_r2, prscsx_enet_coef = prscsx_cv_retune(samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet')
+#prscsx_r2, prscsx_coef, best_penalty_single_lasso_withprscsx = prscsx_cv_gridsearch(samplesizes, z_eqtl, gexpr, prscsx_weights, 'lasso')
+#prscsx_enet_r2, prscsx_enet_coef, best_penalty_single_enet_withprscsx = prscsx_cv_gridsearch(samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet')
+#print("best penalty for lasso with prscsx: " + str(best_penalty_single_lasso_withprscsx))
+#print("best penalty for enet with prscsx: " + str(best_penalty_single_enet_withprscsx))
 
 # --- PROCESS SUMMARY STATISTICS
 num_causal_susie = 0
@@ -116,8 +118,10 @@ for i in range(0,len(sumstats_files)):
 # --- RUN CV MAGEPRO 
 magepro_r2, magepro_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_lasso, 'lasso')
 magepro_enet_r2, magepro_enet_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_enet, 'enet')
-#magepro_r2, magepro_coef = magepro_cv_retune(samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso')
-#magepro_enet_r2, magepro_enet_coef = magepro_cv_retune(samplesizes, z_eqtl, gexpr, sumstats_weights, 'enet')
+#magepro_r2, magepro_coef, best_penalty_single_lasso_withmagepro, best_penalty_magepro_lasso = magepro_cv_gridsearch(samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso')
+#magepro_enet_r2, magepro_enet_coef, best_penalty_single_enet_withmagepro, best_penalty_magepro_enet =magepro_cv_gridsearch(samplesizes, z_eqtl, gexpr, sumstats_weights, 'enet')
+#print("best penalty pair for lasso magepro: " + str(best_penalty_single_lasso_withmagepro) + ", " + str(best_penalty_magepro_lasso) )
+#print("best penalty pair for enet magepro: " + str(best_penalty_single_enet_withmagepro) + ", " + str(best_penalty_magepro_enet) )
 
 print("magepro lasso: ")
 print(magepro_r2)

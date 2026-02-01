@@ -11,13 +11,14 @@ afr_geno_prefix=/expanse/lustre/projects/ddp412/kakamatsu/ldref/afr/1000G_afr_ch
 amr_geno_prefix=/expanse/lustre/projects/ddp412/kakamatsu/ldref/amr/1000G_amr_chr
 threads=4
 #num_causal_list=(1 2 4 8 15 25)
-num_causal_list=(4 15)
+num_causal_list=(4)
 
-jobs=(1 2 3 4 5)
+jobs=(1 2 3 4 5 6 7 8 9 10)
 #jobs=(1)
 for num_causal in "${num_causal_list[@]}"; do
     for job in "${jobs[@]}"; do
-        out=/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO_SIMULATIONS_DIR/MAGEPRO_REVIEWS_${num_causal}causal_correffects_mismatch_h2_job${job} 
+        #out=/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO_SIMULATIONS_DIR/MAGEPRO_REVIEWS_${num_causal}causal_correffects_mismatch_h2_job${job}
+	out=/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO_SIMULATIONS_DIR/MAGEPRO_REVIEWS2_${num_causal}causal_correffects_cholesky_plinkstyle_mismatch_h2_job${job}
         #rm -rf $out
         #mkdir $out
         out_results=${out}/results

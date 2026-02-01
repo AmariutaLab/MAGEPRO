@@ -157,6 +157,26 @@ def sim_eqtl(Z_qtl, nqtl, b_qtls, eqtl_h2, temp, thread_n):
         hsq_p=1
     return (penalty, coef,h2g,hsq_p,r2,gexpr)
 
+def sim_eqtl_no_model(Z_qtl, nqtl, b_qtls, eqtl_h2, temp, thread_n): 
+    """
+    Simulate an eQTL study using `nqtl` individuals.
+    :param Z_qtl: simulated genotypes
+    :param nqtl: int the number of eQTL-panel genotypes to sample
+    :param b_qtls: numpy.ndarray latent eQTL effects for the causal gene: SNPs x genes
+    :param eqtl_h2: list of expression variance explained by linear model of SNPs for each gene (not used) rather min(1,b@LD_qtl[np.ix_(nearSNPsi,nearSNPsi)]@b)
+    :param temp: name of temporary directory
+    :return:  (numpy.ndarray x 6) Arrays of best lasso penalty, eqtl effect sizes, heritability, cross validation accuracies, simulated ge
+    """
+    allqtlshape = b_qtls.shape
+    n, p = [float(x) for x in Z_qtl.shape] 
+
+    tempdir = temp + "/temp"
+    b = b_qtls[:,0]
+    nonzeroindex = np.where(b != 0)[0]
+    gexpr = sim_trait(np.dot(Z_qtl,b), eqtl_h2)[0]
+    h2g,hsq_se,hsq_p = get_hsq(Z_qtl,gexpr,tempdir,"/expanse/lustre/projects/ddp412/kakamatsu/fusion_twas-master/gcta_nr_robust", thread_n)
+    return (h2g,hsq_p,gexpr)
+
 # -- SIMULATE CAUSAL EFFECT SIZES
 def sim_effect_sizes(h2g, num_causal, num_snps, causal_index):
     mean = 0
@@ -517,87 +537,6 @@ def magepro_cv(N, geno_magepro, pheno_magepro, susie_weights, best_penalty, m):
 
     return magepro_r2, magepro_coef
 
-def magepro_cv_retune(N, geno_magepro, pheno_magepro, susie_weights, m):
-    ### version of magepro_cv which retunes best alpho for single ancestry model with only the training split. 
-    # N = sample size 
-    # geno_magepro = genotypes
-    # pheno_magepro = gene expression or phenotype data 
-    # susie_weights = dictionary of external datasets to use (susie posterior weights)
-        # Ancestry : Array of weights
-    # m = str indicating type of model ['enet', 'lasso']
-
-    if m not in ['enet', 'lasso']:
-        print("Invalid model type passed to param m")
-        sys.exit(1)
-
-    alphas_magepro=np.logspace(-2,1.2,50,base=10)
-    kf_magepro=KFold(n_splits=5)
-    #store r2 from lm for each penalty
-    lm_r2_allpenalty=[] 
-    for penalty_magepro in alphas_magepro:
-        #everyfold record predicted expression on testing set
-        predicted_expressions = np.zeros(N)
-        for train_index_magepro, test_index_magepro in kf_magepro.split(geno_magepro):
-            y_train_magepro, y_test_magepro = pheno_magepro[train_index_magepro], pheno_magepro[test_index_magepro]
-            y_train_std_magepro=(y_train_magepro-np.mean(y_train_magepro))/np.std(y_train_magepro)
-            y_test_std_magepro=(y_test_magepro-np.mean(y_test_magepro))/np.std(y_test_magepro)
-            X_train_magepro, X_test_magepro = geno_magepro[train_index_magepro], geno_magepro[test_index_magepro]
-            # afronly weights
-            #if m == 'lasso':
-                #model = lm.Lasso(fit_intercept=True)
-            #else:
-                #model = lm.ElasticNet(fit_intercept=True)
-            #model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
-            #model.fit(X_train_magepro, y_train_std_magepro)
-            #coef_magepro = model.coef_
-            best_penalty_single_tuning, coef_magepro, single_r2_tuning = fit_sparse_regularized_lm(X_train_magepro, y_train_std_magepro, m)
-            print("best penalty " + m + " in cross validation iteration: " + str(best_penalty_single_tuning) )
-            if np.all(coef_magepro == 0):
-                wgts = weights_marginal_FUSION(X_train_magepro, y_train_std_magepro, beta = True)
-                coef_magepro, r2_top1 = top1(y_test_std_magepro, X_test_magepro, wgts)
-            #prepare for ridge regression to find optimal combination of AFR gene model and EUR sumstat
-            X_train_magepro2 = np.dot(X_train_magepro, coef_magepro.reshape(-1, 1))
-            X_test_magepro2 = np.dot(X_test_magepro, coef_magepro.reshape(-1, 1))
-            for ancestry, weights in susie_weights.items():
-                X_train_magepro2 = np.hstack((X_train_magepro2, np.dot(X_train_magepro, weights.reshape(-1, 1))))
-                X_test_magepro2 = np.hstack((X_test_magepro2, np.dot(X_test_magepro, weights.reshape(-1, 1))))
-            ridge = Ridge(alpha=penalty_magepro) #now finding best penalty for ridge regression 
-            ridge.fit(X_train_magepro2,y_train_std_magepro)
-            ridge_coef = ridge.coef_
-            #predict on testing
-            predicted_expressions[test_index_magepro] = np.dot(X_test_magepro2, ridge_coef)
-        #record r2 from lm
-        lreg = LinearRegression().fit(np.array(predicted_expressions).reshape(-1, 1), pheno_magepro)
-        r2_cv_penalty = lreg.score(np.array(predicted_expressions).reshape(-1, 1), pheno_magepro)
-        lm_r2_allpenalty.append(r2_cv_penalty) 
-    besti_magepro=np.argmax(lm_r2_allpenalty)
-    bestalpha_magepro=alphas_magepro[besti_magepro]
-    magepro_r2 = lm_r2_allpenalty[besti_magepro] # returning this for cv r2
-
-    # full model for training r2 and full coef
-    #if m == 'lasso':
-        #model = lm.Lasso(fit_intercept=True)
-    #else:
-        #model = lm.ElasticNet(fit_intercept=True)
-    #model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
-    #model.fit(geno_magepro, pheno_magepro)
-    #coef_magepro = model.coef_
-    best_penalty_single_tuning_full, coef_magepro, single_r2_tuning_full = fit_sparse_regularized_lm(geno_magepro, pheno_magepro, m)
-    if np.all(coef_magepro == 0):
-        wgts = weights_marginal_FUSION(geno_magepro, pheno_magepro, beta = True)
-        coef_magepro, r2_top1 = top1(pheno_magepro, geno_magepro, wgts)
-    X_magepro = np.dot(geno_magepro, coef_magepro.reshape(-1, 1))
-    for ancestry, weights in susie_weights.items():
-        X_magepro = np.hstack((X_magepro, np.dot(geno_magepro, weights.reshape(-1, 1))))
-    ridge = Ridge(alpha=bestalpha_magepro)
-    ridge.fit(X_magepro, pheno_magepro)
-    wgts_sep = coef_magepro.reshape(-1, 1)
-    for ancestry, weights in susie_weights.items():
-        wgts_sep = np.hstack((wgts_sep, weights.reshape(-1, 1)))
-    magepro_coef = np.dot(wgts_sep, ridge.coef_) #magepro coef
-
-    return magepro_r2, magepro_coef
-
 def PRSCSx_shrinkage(exec_dir, ldref_dir, working_dir, input, ss, pp, BIM, phi):
     # exec_dir = directory where PRSCSx executable is located 
     # ldref_dir = directory with ld reference files from PRSCSx github 
@@ -629,8 +568,78 @@ def PRSCSx_shrinkage(exec_dir, ldref_dir, working_dir, input, ss, pp, BIM, phi):
 
     return prscsx_sumstats_weights
 
-
 def prscsx_cv(N, geno_prscsx, pheno_prscsx, prscsx_weights, best_penalty, m):
+    # N = sample size 
+    # geno_prscsx = genotypes
+    # pheno_prscsx = gene expression or phenotype data 
+    # prscsx_weights = dictionary of external datasets to use from prscsx shrinkage 
+        # Ancestry : Array of weights
+    # best_penalty = best alpha penalty from single pop model corresponding to m (from lasso or enet)
+    # m = str indicating type of model ['enet', 'lasso']
+
+    if m not in ['enet', 'lasso']:
+        print("Invalid model type passed to param m")
+        sys.exit(1)
+
+    kf_prscsx=KFold(n_splits=5)
+    prscsx_r2 = None
+    predicted_expressions = np.zeros(N)
+    for train_index_prscsx, test_index_prscsx in kf_prscsx.split(geno_prscsx):
+        y_train_prscsx, y_test_prscsx = pheno_prscsx[train_index_prscsx], pheno_prscsx[test_index_prscsx]
+        y_train_std_prscsx=(y_train_prscsx-np.mean(y_train_prscsx))/np.std(y_train_prscsx)
+        y_test_std_prscsx=(y_test_prscsx-np.mean(y_test_prscsx))/np.std(y_test_prscsx)
+        X_train_prscsx, X_test_prscsx = geno_prscsx[train_index_prscsx], geno_prscsx[test_index_prscsx]
+        #afronly weights
+        if m == 'lasso':
+            model = lm.Lasso(fit_intercept=True)
+        else:
+            model = lm.ElasticNet(fit_intercept=True)
+        model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
+        model.fit(X_train_prscsx, y_train_std_prscsx)
+        coef_prscsx = model.coef_
+        if np.all(coef_prscsx == 0):
+            wgts = weights_marginal_FUSION(X_train_prscsx, y_train_std_prscsx, beta = True)
+            coef_prscsx, r2_top1 = top1(y_test_std_prscsx, X_test_prscsx, wgts)
+        #prepare for linear regression to find optimal combination of AFR gene model and EUR sumstat
+        X_train_prscsx2 = np.dot(X_train_prscsx, coef_prscsx.reshape(-1, 1))
+        X_test_prscsx2 = np.dot(X_test_prscsx, coef_prscsx.reshape(-1, 1))
+        for ancestry, weights in prscsx_weights.items():
+            X_train_prscsx2 = np.hstack((X_train_prscsx2, np.dot(X_train_prscsx, weights.reshape(-1, 1))))
+            X_test_prscsx2 = np.hstack((X_test_prscsx2, np.dot(X_test_prscsx, weights.reshape(-1, 1))))
+        linear_regression = LinearRegression()
+        linear_regression.fit(X_train_prscsx2, y_train_std_prscsx)
+        linear_coef = linear_regression.coef_
+        #predict on testing
+        predicted_expressions[test_index_prscsx] = np.dot(X_test_prscsx2, linear_coef)
+    #record r2 from lm
+    lreg = LinearRegression().fit(np.array(predicted_expressions).reshape(-1, 1), pheno_prscsx)
+    prscsx_r2 = lreg.score(np.array(predicted_expressions).reshape(-1, 1), pheno_prscsx)
+
+    # full model for training r2 and full coef
+    if m == 'lasso':
+        model = lm.Lasso(fit_intercept=True)
+    else:
+        model = lm.ElasticNet(fit_intercept=True)
+    model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
+    model.fit(geno_prscsx, pheno_prscsx)
+    coef_prscsx = model.coef_
+    if np.all(coef_prscsx == 0):
+        wgts = weights_marginal_FUSION(geno_prscsx, pheno_prscsx, beta = True)
+        coef_prscsx, r2_top1 = top1(pheno_prscsx, geno_prscsx, wgts)
+    X_prscsx = np.dot(geno_prscsx, coef_prscsx.reshape(-1, 1))
+    for ancestry, weights in prscsx_weights.items():
+        X_prscsx = np.hstack((X_prscsx, np.dot(geno_prscsx, weights.reshape(-1, 1))))
+    linear_regression = LinearRegression()
+    linear_regression.fit(X_prscsx, pheno_prscsx)
+    linear_coef = linear_regression.coef_
+    wgts_sep = coef_prscsx.reshape(-1, 1)
+    for ancestry, weights in prscsx_weights.items():
+        wgts_sep = np.hstack((wgts_sep, weights.reshape(-1, 1)))
+    prscsx_coef = np.dot(wgts_sep, linear_coef)
+
+    return prscsx_r2, prscsx_coef
+
+def prscsx_cv_beforeedit(N, geno_prscsx, pheno_prscsx, prscsx_weights, best_penalty, m):
     # NOTE: edit to only tune single pop penalty...not sure why there is an outer loop for penalty_prscsx when there is not second hyperparameter like magepro 
     # N = sample size 
     # geno_prscsx = genotypes
@@ -711,89 +720,6 @@ def prscsx_cv(N, geno_prscsx, pheno_prscsx, prscsx_weights, best_penalty, m):
     return prscsx_r2, prscsx_coef
 
 
-def prscsx_cv_retune(N, geno_prscsx, pheno_prscsx, prscsx_weights, m):
-    # NOTE: edit to only tune single pop penalty...not sure why there is an outer loop for penalty_prscsx when there is not second hyperparameter like magepro 
-    # N = sample size 
-    # geno_prscsx = genotypes
-    # pheno_prscsx = gene expression or phenotype data 
-    # prscsx_weights = dictionary of external datasets to use from prscsx shrinkage 
-        # Ancestry : Array of weights
-    # m = str indicating type of model ['enet', 'lasso']
-
-    if m not in ['enet', 'lasso']:
-        print("Invalid model type passed to param m")
-        sys.exit(1)
-
-    alphas_prscsx=np.logspace(-2,1.2,50,base=10)
-    kf_prscsx=KFold(n_splits=5)
-    #store r2 from lm for each penalty
-    lm_r2_allpenalty=[] 
-    for penalty_prscsx in alphas_prscsx:
-        #everyfold record predicted expression on testing set
-        predicted_expressions = np.zeros(N)
-        for train_index_prscsx, test_index_prscsx in kf_prscsx.split(geno_prscsx):
-            y_train_prscsx, y_test_prscsx = pheno_prscsx[train_index_prscsx], pheno_prscsx[test_index_prscsx]
-            y_train_std_prscsx=(y_train_prscsx-np.mean(y_train_prscsx))/np.std(y_train_prscsx)
-            y_test_std_prscsx=(y_test_prscsx-np.mean(y_test_prscsx))/np.std(y_test_prscsx)
-            X_train_prscsx, X_test_prscsx = geno_prscsx[train_index_prscsx], geno_prscsx[test_index_prscsx]
-            #afronly weights
-            #if m == 'lasso':
-                #model = lm.Lasso(fit_intercept=True)
-            #else:
-                #model = lm.ElasticNet(fit_intercept=True)
-            #model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
-            #model.fit(X_train_prscsx, y_train_std_prscsx)
-            #coef_prscsx = model.coef_
-            best_penalty_single_tuning, coef_prscsx, single_r2_tuning = fit_sparse_regularized_lm(X_train_prscsx, y_train_std_prscsx, m)
-            print("best penalty " + m + " in cross validation iteration: " + str(best_penalty_single_tuning) )
-            if np.all(coef_prscsx == 0):
-                wgts = weights_marginal_FUSION(X_train_prscsx, y_train_std_prscsx, beta = True)
-                coef_prscsx, r2_top1 = top1(y_test_std_prscsx, X_test_prscsx, wgts)
-            #prepare for linear regression to find optimal combination of AFR gene model and EUR sumstat
-            X_train_prscsx2 = np.dot(X_train_prscsx, coef_prscsx.reshape(-1, 1))
-            X_test_prscsx2 = np.dot(X_test_prscsx, coef_prscsx.reshape(-1, 1))
-            for ancestry, weights in prscsx_weights.items():
-                X_train_prscsx2 = np.hstack((X_train_prscsx2, np.dot(X_train_prscsx, weights.reshape(-1, 1))))
-                X_test_prscsx2 = np.hstack((X_test_prscsx2, np.dot(X_test_prscsx, weights.reshape(-1, 1))))
-            linear_regression = LinearRegression()
-            linear_regression.fit(X_train_prscsx2, y_train_std_prscsx)
-            linear_coef = linear_regression.coef_
-            #predict on testing
-            predicted_expressions[test_index_prscsx] = np.dot(X_test_prscsx2, linear_coef)
-        #record r2 from lm
-        lreg = LinearRegression().fit(np.array(predicted_expressions).reshape(-1, 1), pheno_prscsx)
-        r2_cv_penalty = lreg.score(np.array(predicted_expressions).reshape(-1, 1), pheno_prscsx)
-        lm_r2_allpenalty.append(r2_cv_penalty) 
-    besti_prscsx=np.argmax(lm_r2_allpenalty)
-    bestalpha_prscsx=alphas_prscsx[besti_prscsx]
-    prscsx_r2 = lm_r2_allpenalty[besti_prscsx] # returning this for cv r2
-
-    # full model for training r2 and full coef
-    #if m == 'lasso':
-        #model = lm.Lasso(fit_intercept=True)
-    #else:
-        #model = lm.ElasticNet(fit_intercept=True)
-    #model.set_params(alpha=best_penalty,tol=1e-4,max_iter=1000)
-    #model.fit(geno_prscsx, pheno_prscsx)
-    #coef_prscsx = model.coef_
-    best_penalty_single_tuning_full, coef_prscsx, single_r2_tuning_full = fit_sparse_regularized_lm(geno_prscsx, pheno_prscsx, m)
-    if np.all(coef_prscsx == 0):
-        wgts = weights_marginal_FUSION(geno_prscsx, pheno_prscsx, beta = True)
-        coef_prscsx, r2_top1 = top1(pheno_prscsx, geno_prscsx, wgts)
-    X_prscsx = np.dot(geno_prscsx, coef_prscsx.reshape(-1, 1))
-    for ancestry, weights in prscsx_weights.items():
-        X_prscsx = np.hstack((X_prscsx, np.dot(geno_prscsx, weights.reshape(-1, 1))))
-    linear_regression = LinearRegression()
-    linear_regression.fit(X_prscsx, pheno_prscsx)
-    linear_coef = linear_regression.coef_
-    wgts_sep = coef_prscsx.reshape(-1, 1)
-    for ancestry, weights in prscsx_weights.items():
-        wgts_sep = np.hstack((wgts_sep, weights.reshape(-1, 1)))
-    prscsx_coef = np.dot(wgts_sep, linear_coef)
-
-    return prscsx_r2, prscsx_coef
-
-
 def fit_sparse_regularized_lm_fixed_alpha(Z, y, m, alpha):
     """
     fit regularized lm with given penalty hyperparameter
@@ -852,6 +778,8 @@ def magepro_cv_gridsearch(
                 # standardize phenotype in training fold
                 y_train_std = (y_train - y_train.mean()) / y_train.std()
                 y_test_std = (y_test - y_test.mean()) / y_test.std()
+                #y_train_std = y_train
+                #y_test_std = y_test
 
                 # ---- single ancestry sparse model (FIXED alpha) ----
                 coef_single = fit_sparse_regularized_lm_fixed_alpha(
@@ -922,6 +850,69 @@ def magepro_cv_gridsearch(
 
     return best_cv_r2, magepro_coef, best_alpha_single, best_alpha_mage
 
+
+def magepro_cv_nested(
+    N,
+    geno_magepro,
+    pheno_magepro,
+    susie_weights,
+    m,
+    n_splits=5
+):
+    """
+    Nested cross validation to identify optimal hyperparameters for MAGEPRO
+    NOTE: make sure input pheno_magepro is also standardized
+    """
+
+    if m not in ["enet", "lasso"]:
+        raise ValueError("Invalid model type")
+
+    #pheno_magepro = (pheno_magepro - pheno_magepro.mean()) / pheno_magepro.std()
+    
+    kf = KFold(n_splits=n_splits)
+
+    predicted_expressions = np.zeros(N)
+
+    for train_idx, test_idx in kf.split(geno_magepro):
+        X_train, X_test = geno_magepro[train_idx], geno_magepro[test_idx]
+        y_train, y_test = pheno_magepro[train_idx], pheno_magepro[test_idx]
+
+        # standardize phenotype in training fold
+        y_train_std = (y_train - y_train.mean()) / y_train.std()
+        y_test_std = (y_test - y_test.mean()) / y_test.std()
+
+        best_nested_cv_r2, magepro_coef_cv, best_alpha_single_cv, best_alpha_mage_cv = magepro_cv_gridsearch(
+            X_train.shape[0],
+            X_train,
+            y_train_std,
+            susie_weights,
+            m
+        )
+
+        predicted_expressions[test_idx] = np.dot(
+            X_test, magepro_coef_cv
+        )
+
+    # evaluate CV R2
+    lreg = LinearRegression().fit(
+        predicted_expressions.reshape(-1, 1),
+        pheno_magepro
+    )
+    cv_r2 = lreg.score(
+        predicted_expressions.reshape(-1, 1),
+        pheno_magepro
+    )
+
+    best_cv_r2, magepro_coef, best_alpha_single, best_alpha_mage = magepro_cv_gridsearch(
+            N,
+            geno_magepro,
+            pheno_magepro,
+            susie_weights,
+            m
+        )
+
+    return cv_r2, magepro_coef, best_alpha_single, best_alpha_mage
+
 def prscsx_cv_gridsearch(
     N,
     geno_prscsx,
@@ -955,6 +946,8 @@ def prscsx_cv_gridsearch(
             # standardize phenotype in training fold
             y_train_std = (y_train - y_train.mean()) / y_train.std()
             y_test_std = (y_test - y_test.mean()) / y_test.std()
+            #y_train_std = y_train
+            #y_test_std = y_test
 
             # ---- single ancestry sparse model (FIXED alpha) ----
             coef_single = fit_sparse_regularized_lm_fixed_alpha(
@@ -1035,5 +1028,565 @@ def prscsx_cv_gridsearch(
     prscsx_coef = np.dot(wgts_sep, linreg.coef_)
 
     return best_cv_r2, prscsx_coef, best_alpha_single
+
+def prscsx_cv_nested(
+    N,
+    geno_prscsx,
+    pheno_prscsx,
+    prscsx_weights,
+    m,
+    n_splits=5
+):
+    """
+    Nested cross validation to identify optimal hyperparameters for PRS-CSx
+    """
+
+    if m not in ["enet", "lasso"]:
+        raise ValueError("Invalid model type")
+
+    #pheno_prscsx = (pheno_prscsx - pheno_prscsx.mean()) / pheno_prscsx.std()
+
+    kf = KFold(n_splits=n_splits)
+
+    predicted_expressions = np.zeros(N)
+
+    for train_idx, test_idx in kf.split(geno_prscsx):
+        X_train, X_test = geno_prscsx[train_idx], geno_prscsx[test_idx]
+        y_train, y_test = pheno_prscsx[train_idx], pheno_prscsx[test_idx]
+
+        # standardize phenotype in training fold
+        y_train_std = (y_train - y_train.mean()) / y_train.std()
+        y_test_std = (y_test - y_test.mean()) / y_test.std()
+
+        best_nested_cv_r2, prscsx_coef_cv, best_alpha_single_cv = prscsx_cv_gridsearch(
+            X_train.shape[0],
+            X_train,
+            y_train_std,
+            prscsx_weights,
+            m
+        )
+        
+        predicted_expressions[test_idx] = np.dot(
+            X_test, prscsx_coef_cv
+        )
+
+    # evaluate CV R2
+    lreg = LinearRegression().fit(
+        predicted_expressions.reshape(-1, 1),
+        pheno_prscsx
+    )
+    cv_r2 = lreg.score(
+        predicted_expressions.reshape(-1, 1),
+        pheno_prscsx
+    )
+    
+    best_cv_r2, prscsx_coef, best_alpha_single = prscsx_cv_gridsearch(
+        geno_prscsx.shape[0],
+        geno_prscsx,
+        pheno_prscsx,
+        prscsx_weights,
+        m
+    )
+
+    return cv_r2, prscsx_coef, best_alpha_single
+
+#def fit_sparse_regularized_lm(Z, y, m):
+def fit_sparse_regularized_lm_cv_nested(
+    N,
+    geno,
+    pheno,
+    m,
+    n_splits=5
+):
+    """
+    Nested cross validation to identify optimal hyperparameters for regularized lm
+    """
+
+    if m not in ["enet", "lasso"]:
+        raise ValueError("Invalid model type")
+
+    #pheno_prscsx = (pheno_prscsx - pheno_prscsx.mean()) / pheno_prscsx.std()
+
+    kf = KFold(n_splits=n_splits)
+
+    predicted_expressions = np.zeros(N)
+
+    for train_idx, test_idx in kf.split(geno):
+        X_train, X_test = geno[train_idx], geno[test_idx]
+        y_train, y_test = pheno[train_idx], pheno[test_idx]
+
+        # standardize phenotype in training fold
+        y_train_std = (y_train - y_train.mean()) / y_train.std()
+        y_test_std = (y_test - y_test.mean()) / y_test.std()
+
+        best_alpha_cv, coef_cv, best_r2_cv = fit_sparse_regularized_lm(
+            X_train,
+            y_train_std,
+            m
+        )
+        
+        predicted_expressions[test_idx] = np.dot(
+            X_test, coef_cv
+        )
+
+    # evaluate CV R2
+    lreg = LinearRegression().fit(
+        predicted_expressions.reshape(-1, 1),
+        pheno
+    )
+    cv_r2 = lreg.score(
+        predicted_expressions.reshape(-1, 1),
+        pheno
+    )
+    
+    best_alpha, coef, best_r2 = fit_sparse_regularized_lm(
+        geno,
+        pheno,
+        m
+    )
+
+    return cv_r2, coef, best_alpha
+
+
+# --- copy paste from twas sim, plink style lasso 
+    # the one inherited before is not accurate. plink style lasso does not do a nested CV
+
+
+def _fit_sparse_penalized_model(Z, y, h2g, model_cls=lm.Lasso, args=None):
+    """
+    Infer eqtl coefficients using L1/L2 penalized regression. Uses the PLINK-style coordinate descent algorithm
+    that is bootstrapped by the current h2g estimate.
+
+    :param Z: numpy.ndarray n x p genotype matrix
+    :param y: numpy.ndarray gene expression for n individuals
+    :param h2g: float the -estimated- h2g from reference panel
+    :param model_cls: linear_model from sklearn. Must be either Lasso or ElasticNet
+
+    :return: (numpy.ndarray, float, float) tuple of the LASSO or ElasticNet coefficients, the r-squared score, and log-likelihood
+    """
+    if model_cls not in [lm.Lasso, lm.ElasticNet]:
+        raise ValueError("penalized model must be either Lasso or ElasticNet")
+
+    n, p = Z.shape
+
+    def _gen_e():
+        e = np.random.normal(size=n)
+        return np.linalg.norm(Z.T.dot(e), np.inf)
+
+    # PLINK-style LASSO
+    lambda_max = np.linalg.norm(Z.T.dot(y), np.inf) / float(n)
+
+    min_tmp = np.median([_gen_e() for _ in range(1000)])
+    sige = np.sqrt(1.0 - h2g + (1.0 / float(n)))
+    lambda_min = (sige / n) * min_tmp
+
+    # 100 values spaced logarithmically from lambda-min to lambda-max
+    alphas = np.exp(np.linspace(np.log(lambda_min), np.log(lambda_max), 100))
+
+    # fit solution using coordinate descent, updating with consecutively smaller penalties
+    model = model_cls(fit_intercept=True, warm_start=True)
+    for penalty in reversed(alphas):
+        model.set_params(alpha=penalty)
+        model.fit(Z, y)
+
+    coef, r2, logl = _get_model_info(model, Z, y)
+
+    return coef, r2, logl
+
+
+def _get_model_info(model, Z, y):
+    """
+    Helper function to get fitted coefficients, R2, and log-likelihood
+    """
+    n, p = Z.shape
+    coef = model.coef_
+
+    r2 = model.score(Z, y)
+    ystar = model.predict(Z)
+    s2e = sum((y - ystar) ** 2) / (n - 1)
+
+    logl = sum(stats.norm.logpdf(y, loc=ystar, scale=np.sqrt(s2e)))
+
+    return coef, r2, logl
+
+# function for cv using plink style lasso/enet model
+def fit_sparse_regularized_lm_cv_plink(
+    N,
+    geno,
+    pheno,
+    m,
+    h2g,
+    n_splits=5
+):
+    """
+    Nested cross validation to identify optimal hyperparameters for regularized lm
+    """
+
+    if m not in ["enet", "lasso"]:
+        raise ValueError("Invalid model type")
+
+    if m == "lasso":
+        model_cls = lm.Lasso
+    else:
+        model_cls = lm.ElasticNet
+
+    kf = KFold(n_splits=n_splits)
+
+    predicted_expressions = np.zeros(N)
+
+    for train_idx, test_idx in kf.split(geno):
+        X_train, X_test = geno[train_idx], geno[test_idx]
+        y_train, y_test = pheno[train_idx], pheno[test_idx]
+
+        # standardize phenotype in training fold
+        y_train_std = (y_train - y_train.mean()) / y_train.std()
+        y_test_std = (y_test - y_test.mean()) / y_test.std()
+
+        # _fit_sparse_penalized_model(Z, y, h2g, model_cls=lm.Lasso, args=None)
+        coef_cv, train_r2_cv, train_logl_cv = _fit_sparse_penalized_model(X_train, y_train_std, h2g, model_cls=model_cls)
+        
+        predicted_expressions[test_idx] = np.dot(
+            X_test, coef_cv
+        )
+
+    # evaluate CV R2
+    lreg = LinearRegression().fit(
+        predicted_expressions.reshape(-1, 1),
+        pheno
+    )
+    cv_r2 = lreg.score(
+        predicted_expressions.reshape(-1, 1),
+        pheno
+    )
+    
+    coef, train_r2, train_logl = _fit_sparse_penalized_model(geno, pheno, h2g, model_cls=model_cls)
+
+    return cv_r2, coef
+
+def prscsx_cv_plink(
+    N,
+    geno_prscsx,
+    pheno_prscsx,
+    prscsx_weights,
+    m,
+    h2g,
+    n_splits=5
+):
+    """
+    PLINK-style cross validation for PRS-CSx:
+      - single-ancestry sparse model is fit using heritability-bootstrapped
+        LASSO / ElasticNet (no alpha tuning)
+      - PRS-CSx linear combination is fit without regularization
+      - no nested CV
+    """
+
+    if m not in ["enet", "lasso"]:
+        raise ValueError("Invalid model type")
+
+    model_cls = lm.Lasso if m == "lasso" else lm.ElasticNet
+    kf = KFold(n_splits=n_splits)
+
+    predicted_expressions = np.zeros(N)
+
+    # ---------- outer CV ----------
+    for train_idx, test_idx in kf.split(geno_prscsx):
+        X_train, X_test = geno_prscsx[train_idx], geno_prscsx[test_idx]
+        y_train, y_test = pheno_prscsx[train_idx], pheno_prscsx[test_idx]
+
+        # standardize phenotype in training fold
+        y_train_std = (y_train - y_train.mean()) / y_train.std()
+        y_test_std = (y_test - y_test.mean()) / y_test.std()
+
+        # ---------- single-ancestry PLINK-style sparse model ----------
+        coef_single, _, _ = _fit_sparse_penalized_model(
+            X_train,
+            y_train_std,
+            h2g,
+            model_cls=model_cls
+        )
+
+        # fallback if all-zero model
+        if np.all(coef_single == 0):
+            wgts = weights_marginal_FUSION(
+                X_train,
+                y_train_std,
+                beta=True
+            )
+            coef_single, _ = top1(
+                y_test_std,
+                X_test,
+                wgts
+            )
+
+        # ---------- construct PRS-CSx design matrix ----------
+        X_train_ps = np.dot(X_train, coef_single.reshape(-1, 1))
+        X_test_ps = np.dot(X_test, coef_single.reshape(-1, 1))
+
+        for ancestry, weights in prscsx_weights.items():
+            X_train_ps = np.hstack(
+                (X_train_ps, np.dot(X_train, weights.reshape(-1, 1)))
+            )
+            X_test_ps = np.hstack(
+                (X_test_ps, np.dot(X_test, weights.reshape(-1, 1)))
+            )
+
+        # ---------- linear combination (no regularization) ----------
+        linreg = LinearRegression()
+        linreg.fit(X_train_ps, y_train_std)
+
+        predicted_expressions[test_idx] = np.dot(
+            X_test_ps,
+            linreg.coef_
+        )
+
+    # ---------- evaluate CV R2 ----------
+    lreg = LinearRegression().fit(
+        predicted_expressions.reshape(-1, 1),
+        pheno_prscsx
+    )
+    cv_r2 = lreg.score(
+        predicted_expressions.reshape(-1, 1),
+        pheno_prscsx
+    )
+
+    # ---------- refit full model ----------
+    coef_single, _, _ = _fit_sparse_penalized_model(
+        geno_prscsx,
+        pheno_prscsx,
+        h2g,
+        model_cls=model_cls
+    )
+
+    if np.all(coef_single == 0):
+        wgts = weights_marginal_FUSION(
+            geno_prscsx,
+            pheno_prscsx,
+            beta=True
+        )
+        coef_single, _ = top1(
+            pheno_prscsx,
+            geno_prscsx,
+            wgts
+        )
+
+    # full PRS-CSx design matrix
+    X_ps = np.dot(geno_prscsx, coef_single.reshape(-1, 1))
+    for ancestry, weights in prscsx_weights.items():
+        X_ps = np.hstack(
+            (X_ps, np.dot(geno_prscsx, weights.reshape(-1, 1)))
+        )
+
+    linreg = LinearRegression()
+    linreg.fit(X_ps, pheno_prscsx)
+
+    # combine coefficients back to SNP space
+    wgts_sep = coef_single.reshape(-1, 1)
+    for ancestry, weights in prscsx_weights.items():
+        wgts_sep = np.hstack(
+            (wgts_sep, weights.reshape(-1, 1))
+        )
+
+    prscsx_coef = np.dot(wgts_sep, linreg.coef_)
+
+    return cv_r2, prscsx_coef
+
+def magepro_cv_gridsearch_plink(
+    N,
+    geno_magepro,
+    pheno_magepro,
+    susie_weights,
+    m,
+    h2g,
+    n_splits=5
+):
+    """
+    Grid search over:
+      - alpha_magepro: ridge penalty for MAGEPRO combination
+
+    Single-ancestry sparse model is PLINK-style (heritability-bootstrapped).
+    """
+
+    if m not in ["enet", "lasso"]:
+        raise ValueError("Invalid model type")
+
+    model_cls = lm.Lasso if m == "lasso" else lm.ElasticNet
+
+    alphas_magepro = np.logspace(-2, 1.2, 50, base=10)
+    kf = KFold(n_splits=n_splits)
+
+    cv_r2 = np.zeros(len(alphas_magepro))
+
+    for j, alpha_mage in enumerate(alphas_magepro):
+
+        predicted_expressions = np.zeros(N)
+
+        for train_idx, test_idx in kf.split(geno_magepro):
+            X_train, X_test = geno_magepro[train_idx], geno_magepro[test_idx]
+            y_train, y_test = pheno_magepro[train_idx], pheno_magepro[test_idx]
+
+            # standardize phenotype in training fold
+            y_train_std = (y_train - y_train.mean()) / y_train.std()
+            y_test_std = (y_test - y_test.mean()) / y_test.std()
+
+            # ---- PLINK-style single-ancestry sparse model ----
+            coef_single, _, _ = _fit_sparse_penalized_model(
+                X_train,
+                y_train_std,
+                h2g,
+                model_cls=model_cls
+            )
+
+            if np.all(coef_single == 0):
+                wgts = weights_marginal_FUSION(
+                    X_train,
+                    y_train_std,
+                    beta=True
+                )
+                coef_single, _ = top1(
+                    y_test_std,
+                    X_test,
+                    wgts
+                )
+
+            # ---- construct MAGEPRO design matrix ----
+            X_train_mp = np.dot(X_train, coef_single.reshape(-1, 1))
+            X_test_mp = np.dot(X_test, coef_single.reshape(-1, 1))
+
+            for ancestry, weights in susie_weights.items():
+                X_train_mp = np.hstack(
+                    (X_train_mp, np.dot(X_train, weights.reshape(-1, 1)))
+                )
+                X_test_mp = np.hstack(
+                    (X_test_mp, np.dot(X_test, weights.reshape(-1, 1)))
+                )
+
+            # ---- ridge combination (FIXED alpha_magepro) ----
+            ridge = Ridge(alpha=alpha_mage)
+            ridge.fit(X_train_mp, y_train_std)
+
+            predicted_expressions[test_idx] = np.dot(
+                X_test_mp,
+                ridge.coef_
+            )
+
+        # evaluate CV R2
+        lreg = LinearRegression().fit(
+            predicted_expressions.reshape(-1, 1),
+            pheno_magepro
+        )
+        cv_r2[j] = lreg.score(
+            predicted_expressions.reshape(-1, 1),
+            pheno_magepro
+        )
+
+    best_j = np.argmax(cv_r2)
+    best_alpha_mage = alphas_magepro[best_j]
+    best_cv_r2 = cv_r2[best_j]
+
+    # -------- refit full model with best alpha --------
+    coef_single, _, _ = _fit_sparse_penalized_model(
+        geno_magepro,
+        pheno_magepro,
+        h2g,
+        model_cls=model_cls
+    )
+
+    if np.all(coef_single == 0):
+        wgts = weights_marginal_FUSION(
+            geno_magepro,
+            pheno_magepro,
+            beta=True
+        )
+        coef_single, _ = top1(
+            pheno_magepro,
+            geno_magepro,
+            wgts
+        )
+
+    X_mp = np.dot(geno_magepro, coef_single.reshape(-1, 1))
+    for ancestry, weights in susie_weights.items():
+        X_mp = np.hstack(
+            (X_mp, np.dot(geno_magepro, weights.reshape(-1, 1)))
+        )
+
+    ridge = Ridge(alpha=best_alpha_mage)
+    ridge.fit(X_mp, pheno_magepro)
+
+    wgts_sep = coef_single.reshape(-1, 1)
+    for ancestry, weights in susie_weights.items():
+        wgts_sep = np.hstack(
+            (wgts_sep, weights.reshape(-1, 1))
+        )
+
+    magepro_coef = np.dot(wgts_sep, ridge.coef_)
+
+    return best_cv_r2, magepro_coef, best_alpha_mage
+
+def magepro_cv_plink(
+    N,
+    geno_magepro,
+    pheno_magepro,
+    susie_weights,
+    m,
+    h2g,
+    n_splits=5
+):
+    """
+    Nested cross validation for MAGEPRO.
+    Ridge penalty is tuned via inner CV.
+    Sparse model is PLINK-style (heritability-bootstrapped).
+    """
+
+    if m not in ["enet", "lasso"]:
+        raise ValueError("Invalid model type")
+
+    kf = KFold(n_splits=n_splits)
+    predicted_expressions = np.zeros(N)
+
+    for train_idx, test_idx in kf.split(geno_magepro):
+        X_train, X_test = geno_magepro[train_idx], geno_magepro[test_idx]
+        y_train, y_test = pheno_magepro[train_idx], pheno_magepro[test_idx]
+
+        # standardize phenotype in training fold
+        y_train_std = (y_train - y_train.mean()) / y_train.std()
+        y_test_std = (y_test - y_test.mean()) / y_test.std()
+
+        _, magepro_coef_cv, best_alpha_mage_cv = magepro_cv_gridsearch_plink(
+            X_train.shape[0],
+            X_train,
+            y_train_std,
+            susie_weights,
+            m,
+            h2g,
+            n_splits=n_splits
+        )
+
+        predicted_expressions[test_idx] = np.dot(
+            X_test,
+            magepro_coef_cv
+        )
+
+    # evaluate outer CV R2
+    lreg = LinearRegression().fit(
+        predicted_expressions.reshape(-1, 1),
+        pheno_magepro
+    )
+    cv_r2 = lreg.score(
+        predicted_expressions.reshape(-1, 1),
+        pheno_magepro
+    )
+
+    # final refit on full data
+    best_cv_r2, magepro_coef, best_alpha_mage = magepro_cv_gridsearch_plink(
+        N,
+        geno_magepro,
+        pheno_magepro,
+        susie_weights,
+        m,
+        h2g,
+        n_splits=n_splits
+    )
+
+    return cv_r2, magepro_coef, best_alpha_mage
 
 

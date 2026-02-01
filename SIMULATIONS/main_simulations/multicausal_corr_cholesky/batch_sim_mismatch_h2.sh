@@ -4,11 +4,11 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
-#SBATCH -t 14:00:00
-#SBATCH -J cholesky_grid
+#SBATCH -t 16:00:00
+#SBATCH -J cholesky_plinkstyle
 #SBATCH -A csd832
-#SBATCH -o /expanse/lustre/projects/ddp412/kakamatsu/working_err/cholesky_grid.%j.%N.out
-#SBATCH -e /expanse/lustre/projects/ddp412/kakamatsu/working_err/cholesky_grid.%j.%N.err
+#SBATCH -o /expanse/lustre/projects/ddp412/kakamatsu/working_err/cholesky_plinkstyle.%j.%N.out
+#SBATCH -e /expanse/lustre/projects/ddp412/kakamatsu/working_err/cholesky_plinkstyle.%j.%N.err
 #SBATCH --export=ALL
 #SBATCH --constraint="lustre"
 

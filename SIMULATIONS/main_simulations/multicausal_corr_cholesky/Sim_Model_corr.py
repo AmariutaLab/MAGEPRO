@@ -52,6 +52,10 @@ temp_dir = args[12] #temporary directory for gcta
 out_results = args[13]
 threads = args[14]
 
+# --- TEMPORARILY ADD HYPERPARAMETER TUNING OPTION, make sure to add as command line arg later
+GRID_SEARCH = True
+# ---
+
 # --- READ IN SIMULATED GENE PLINK FILES
 bim, fam, G_all = read_plink(plink_file, verbose=False)  
 G_all = G_all.T
@@ -71,14 +75,34 @@ b_qtls = np.array(betas)
 b_qtls = np.reshape(b_qtls.T, (bim.shape[0], 1))
 #print(b_qtls.shape)
 
-# --- SIMULATE LASSO GENE MODEL
-best_penalty_lasso, coef, h2g, hsq_p, r2_lasso, gexpr = sim_eqtl(z_eqtl, samplesizes, b_qtls, float(set_h2), temp_dir, threads) #this runs gcta and lasso 
+# --- SIMULATE LASSO GENE MODEL, 1.10
+#best_penalty_lasso, coef, h2g, hsq_p, r2_lasso, gexpr = sim_eqtl(z_eqtl, samplesizes, b_qtls, float(set_h2), temp_dir, threads) #this runs gcta and lasso 
 #gexpr already standardized
-print("lasso best penalty in single pop model: " + str(best_penalty_lasso) )
+#print("lasso best penalty in single pop model: " + str(best_penalty_lasso) )
 
-# --- FIT ENET GENE MODEL 
-best_penalty_enet, coef_enet, r2_enet = fit_sparse_regularized_lm(z_eqtl, gexpr, 'enet')
-print("enet best penalty in single pop model: " + str(best_penalty_enet) )
+# --- SIMULATE GENE AND HSQ, 1.10 
+h2g, hsq_p, gexpr = sim_eqtl_no_model(z_eqtl, samplesizes, b_qtls, float(set_h2), temp_dir, threads) #this runs gcta 
+
+# --- FIT LASSO GENE MODEL, 1.10
+#r2_lasso, coef, best_penalty_lasso = fit_sparse_regularized_lm_cv_nested(samplesizes, z_eqtl, gexpr, 'lasso')
+# best_penalty_lasso, coef, r2_lasso = fit_sparse_regularized_lm(z_eqtl, gexpr, 'lasso')
+#print("lasso best penalty in single pop model: " + str(best_penalty_lasso) )
+
+# --- FIT ENET GENE MODEL
+#r2_enet, coef_enet, best_penalty_enet = fit_sparse_regularized_lm_cv_nested(samplesizes, z_eqtl, gexpr, 'enet')
+# best_penalty_enet, coef_enet, r2_enet = fit_sparse_regularized_lm(z_eqtl, gexpr, 'enet')
+#print("enet best penalty in single pop model: " + str(best_penalty_enet) )
+
+# --- plink style LASSO and ENET, 1.11
+if h2g < 0:
+    h2g_model = 0.05
+else:
+    h2g_model = h2g
+
+r2_lasso, coef = fit_sparse_regularized_lm_cv_plink(samplesizes, z_eqtl, gexpr, 'lasso', h2g_model)
+r2_enet, coef_enet = fit_sparse_regularized_lm_cv_plink(samplesizes, z_eqtl, gexpr, 'enet', h2g_model)
+best_penalty_lasso = None
+best_penalty_enet = None
 
 # --- if the best lasso/enet model with the best penalty gives coef of all 0, we have to use top1 to compute r2 afr
 if np.all(coef == 0):
@@ -100,14 +124,27 @@ executable_dir="/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO/BENCHMARK/PRSc
 ld_reference_dir="/expanse/lustre/projects/ddp412/kakamatsu/eQTLsummary/multipopGE/benchmark/LD_ref"
 prscsx_working_dir=temp_dir+"/PRSCSx/"
 prscsx_weights = PRSCSx_shrinkage(executable_dir, ld_reference_dir, prscsx_working_dir, sumstats_file, "500,500" , population_sumstat, bim, 1e-7)
-#prscsx_r2, prscsx_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_lasso, 'lasso')
-#prscsx_enet_r2, prscsx_enet_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_enet, 'enet')
-#prscsx_r2, prscsx_coef = prscsx_cv_retune(samplesizes, z_eqtl, gexpr, prscsx_weights, 'lasso')
-#prscsx_enet_r2, prscsx_enet_coef = prscsx_cv_retune(samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet')
-prscsx_r2, prscsx_coef, best_penalty_single_lasso_withprscsx = prscsx_cv_gridsearch(samplesizes, z_eqtl, gexpr, prscsx_weights, 'lasso')
-prscsx_enet_r2, prscsx_enet_coef, best_penalty_single_enet_withprscsx = prscsx_cv_gridsearch(samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet')
-print("best penalty for lasso with prscsx: " + str(best_penalty_single_lasso_withprscsx))
-print("best penalty for enet with prscsx: " + str(best_penalty_single_enet_withprscsx))
+if GRID_SEARCH:
+    #print("fitting prscsx model with grid search hyperparameter tuning")
+    #prscsx_r2, prscsx_coef, best_penalty_single_lasso_withprscsx = prscsx_cv_gridsearch(samplesizes, z_eqtl, gexpr, prscsx_weights, 'lasso')
+    #prscsx_enet_r2, prscsx_enet_coef, best_penalty_single_enet_withprscsx = prscsx_cv_gridsearch(samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet')
+    #prscsx_r2, prscsx_coef, best_penalty_single_lasso_withprscsx = prscsx_cv_nested(samplesizes, z_eqtl, gexpr, prscsx_weights, 'lasso')
+    #prscsx_enet_r2, prscsx_enet_coef, best_penalty_single_enet_withprscsx = prscsx_cv_nested(samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet')
+    #print("best penalty for lasso with prscsx: " + str(best_penalty_single_lasso_withprscsx))
+    #print("best penalty for enet with prscsx: " + str(best_penalty_single_enet_withprscsx))
+    
+    # --- 1.11 plink style
+    print("fitting prscsx model with plink style single pop model")
+    prscsx_r2, prscsx_coef = prscsx_cv_plink(samplesizes, z_eqtl, gexpr, prscsx_weights, 'lasso', h2g)
+    prscsx_enet_r2, prscsx_enet_coef = prscsx_cv_plink(samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet', h2g)
+    best_penalty_single_lasso_withprscsx = None
+    best_penalty_single_enet_withprscsx = None
+else:
+    print("fitting prscsx model with the same hyperparameter as single population model (no grid search)")
+    prscsx_r2, prscsx_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_lasso, 'lasso')
+    prscsx_enet_r2, prscsx_enet_coef = prscsx_cv(samplesizes, z_eqtl, gexpr, prscsx_weights, best_penalty_enet, 'enet')
+    best_penalty_single_lasso_withprscsx = None
+    best_penalty_single_enet_withprscsx = None
 
 # --- PROCESS SUMMARY STATISTICS
 num_causal_susie = 0
@@ -119,14 +156,27 @@ for i in range(0,len(sumstats_files)):
     num_causal_susie += len([index for index in CAUSAL if pips[index] >= 0.95])
 
 # --- RUN CV MAGEPRO 
-#magepro_r2, magepro_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_lasso, 'lasso')
-#magepro_enet_r2, magepro_enet_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_enet, 'enet')
-#magepro_r2, magepro_coef = magepro_cv_retune(samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso')
-#magepro_enet_r2, magepro_enet_coef = magepro_cv_retune(samplesizes, z_eqtl, gexpr, sumstats_weights, 'enet')
-magepro_r2, magepro_coef, best_penalty_single_lasso_withmagepro, best_penalty_magepro_lasso = magepro_cv_gridsearch(samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso')
-magepro_enet_r2, magepro_enet_coef, best_penalty_single_enet_withmagepro, best_penalty_magepro_enet =magepro_cv_gridsearch(samplesizes, z_eqtl, gexpr, sumstats_weights, 'enet')
-print("best penalty pair for lasso magepro: " + str(best_penalty_single_lasso_withmagepro) + ", " + str(best_penalty_magepro_lasso) )
-print("best penalty pair for enet magepro: " + str(best_penalty_single_enet_withmagepro) + ", " + str(best_penalty_magepro_enet) )
+if GRID_SEARCH:
+    #print("fitting magepro model with grid search hyperparameter tuning")
+    #magepro_r2, magepro_coef, best_penalty_single_lasso_withmagepro, best_penalty_magepro_lasso = magepro_cv_gridsearch(samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso')
+    #magepro_enet_r2, magepro_enet_coef, best_penalty_single_enet_withmagepro, best_penalty_magepro_enet =magepro_cv_gridsearch(samplesizes, z_eqtl, gexpr, sumstats_weights, 'enet')
+    #magepro_r2, magepro_coef, best_penalty_single_lasso_withmagepro, best_penalty_magepro_lasso = magepro_cv_nested(samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso')
+    #magepro_enet_r2, magepro_enet_coef, best_penalty_single_enet_withmagepro, best_penalty_magepro_enet = magepro_cv_nested(samplesizes, z_eqtl, gexpr, sumstats_weights, 'enet')
+    #print("best penalty pair for lasso magepro: " + str(best_penalty_single_lasso_withmagepro) + ", " + str(best_penalty_magepro_lasso) )
+    #print("best penalty pair for enet magepro: " + str(best_penalty_single_enet_withmagepro) + ", " + str(best_penalty_magepro_enet) )
+    print("fitting magepro model with plink style single pop model and lambda tuning for ridge combination")
+    magepro_r2, magepro_coef, best_penalty_magepro_lasso = magepro_cv_plink(samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso', h2g)
+    magepro_enet_r2, magepro_enet_coef, best_penalty_magepro_enet = magepro_cv_plink(samplesizes, z_eqtl, gexpr, sumstats_weights, 'enet', h2g)
+    best_penalty_single_lasso_withmagepro = None
+    best_penalty_single_enet_withmagepro = None
+else:
+    print("fitting magepro model with the same hyperparameter as single population model (no grid search)")
+    magepro_r2, magepro_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_lasso, 'lasso')
+    magepro_enet_r2, magepro_enet_coef = magepro_cv(samplesizes, z_eqtl, gexpr, sumstats_weights, best_penalty_enet, 'enet')
+    best_penalty_single_lasso_withmagepro = None
+    best_penalty_magepro_lasso = None 
+    best_penalty_single_enet_withmagepro = None
+    best_penalty_magepro_enet = None
 
 print("magepro lasso: ")
 print(magepro_r2)
