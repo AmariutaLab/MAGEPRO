@@ -19,13 +19,13 @@ import sys
 import statsmodels.api as sm
 from numpy.linalg import multi_dot as mdot
 from scipy.special import ndtr
-from magepro_simulations_functions import (magepro_cv, top1_cv,
-                                           fit_sparse_regularized_lm,
+from magepro_simulations_functions import (magepro_cv_plink, top1_cv,
+                                           fit_sparse_regularized_lm_cv_plink,
                                            load_process_sumstats,
                                            correlated_effects_cholesky,
                                            create_betas,
                                            PRSCSx_shrinkage,
-                                           prscsx_cv, allele_qc)
+                                           prscsx_cv_plink, allele_qc, sim_eqtl_no_model)
 
 NUMTARGET_LIST = [300]
 WINDOW = 500000
@@ -52,7 +52,7 @@ def get_ld(prefix, output_path):
     # Center and standardize G
     G -= mafs * 2
     std_devs = np.std(G, axis=0)
-    #std_devs[std_devs == 0] = 1
+    std_devs[std_devs == 0] = 1
     G /= std_devs
 
     # Regularize the LD matrix to make it Positive Semi Definite
@@ -414,21 +414,28 @@ def regress(Z, pheno):
     return gwas
 
 
-def sim_eqtl(Z_eqtl, gexpr, tmp_path): 
-    """
-    Simulate an eQTL study.
-    :param Z_eqtl: simulated genotypes
-    :param tmp_path: name of temporary path
-    :return:  (numpy.ndarray x 6) Arrays of best lasso penalty, eqtl effect sizes, heritability, cross validation accuracies, simulated ge
-    """
-    penalty, coef, r2 = fit_sparse_regularized_lm(Z_eqtl, gexpr, 'lasso')
-    if r2>0:
-        h2g, hsq_se, hsq_p = get_gcta_hsq(Z_eqtl, gexpr, tmp_path, "/expanse/lustre/projects/ddp412/kakamatsu/fusion_twas-master/gcta_nr_robust")
-    else:
-        h2g=0
-        hsq_se=10
-        hsq_p=1
-    return (penalty, coef, h2g, hsq_p, r2)
+# def sim_eqtl(Z_eqtl, gexpr, tmp_path, num_people): 
+#     """
+#     Simulate an eQTL study.
+#     :param Z_eqtl: simulated genotypes
+#     :param tmp_path: name of temporary path
+#     :return:  (numpy.ndarray x 6) Arrays of best lasso penalty, eqtl effect sizes, heritability, cross validation accuracies, simulated ge
+#     num_people
+#     """
+#     if h2g < 0:
+#         h2g_model = 0.05
+#     else:
+#         h2g_model = h2g
+
+#     # samplesizes, z_eqtl, gexpr, 'enet', h2g_model
+#     penalty, coef, r2 = fit_sparse_regularized_lm_cv_plink(num_people, Z_eqtl, gexpr, 'lasso', h2g_model)
+#     if r2>0:
+#         h2g, hsq_se, hsq_p = get_gcta_hsq(Z_eqtl, gexpr, tmp_path, "/expanse/lustre/projects/ddp412/kakamatsu/fusion_twas-master/gcta_nr_robust")
+#     else:
+#         h2g=0
+#         hsq_se=10
+#         hsq_p=1
+#     return (penalty, coef, h2g, hsq_p, r2)
 
 
 def run_magepro(target_gene, 
@@ -439,17 +446,18 @@ def run_magepro(target_gene,
                 pop,
                 num_people,
                 sumstats_files_external,
-                pops_external):
+                pops_external, set_h2, temp_dir):
     """
         target_gene - plink formated file for gene from target cohort
         Z_eqtl - simulated genotypes for target gene
         b_qtls - simulated latent effect sizes
-        gexpr -  simulated gene expression. Used to fit_sparse_regularized_lm
+        gexpr -  simulated gene expression. Used to fit_sparse_regularized_lm_cv_plink
         tmp_path - path to where temporary file will be stored
         pop - target population
         num_people - number of people in target population
         sumstats_files_external - paths to summary statistics files
         pops_external - names of external populations
+        set_h2 - predetermined h2g
 
         Returns
         -------
@@ -459,11 +467,13 @@ def run_magepro(target_gene,
     bim = np.array(bim)
 
     b_qtls = np.reshape(b_qtls.T, (bim.shape[0], 1))
-    best_penalty, coef, h2g, hsq_p, r2all = sim_eqtl(Z_eqtl, gexpr, tmp_path)
+    # best_penalty, coef, h2g, hsq_p, r2all = sim_eqtl(Z_eqtl, gexpr, tmp_path)
+    # z_eqtl, samplesizes, b_qtls, float(set_h2), temp_dir, threads
+    h2g, hsq_p, gexpr = sim_eqtl_no_model(Z_eqtl, num_people, b_qtls, float(set_h2), temp_dir, 1)
 
-    if np.all(coef == 0):
-        print("using top1 backup")
-        r2all, r2_top1, coef = top1_cv(num_people, Z_eqtl, gexpr)
+    # if np.all(coef == 0):
+    #     print("using top1 backup")
+    #     r2all, r2_top1, coef = top1_cv(num_people, Z_eqtl, gexpr)
 
     # num_causal_susie = 0
     sumstats_weights = {}
@@ -477,14 +487,16 @@ def run_magepro(target_gene,
             continue
         sumstats_weights[varname] = weights
         # num_causal_susie += len([index for index in CAUSAL if pips[index] >= 0.95])
-    magepro_r2, magepro_coef = magepro_cv(num_people, Z_eqtl, gexpr, sumstats_weights, best_penalty, m="lasso")
+    # magepro_r2, magepro_coef = magepro_cv(num_people, Z_eqtl, gexpr, sumstats_weights, best_penalty, m="lasso")
+    # samplesizes, z_eqtl, gexpr, sumstats_weights, 'lasso', h2g
+    magepro_r2, magepro_coef, best_penalty_magepro_lasso = magepro_cv_plink(num_people, Z_eqtl, gexpr, sumstats_weights, "lasso", h2g)
 
     # #coef = afr lasso model gene model 
     # lasso_causal_nonzero = len([index for index in CAUSAL if coef[index] != 0])
     # #magepro_coef = magepro gene model 
     # magepro_causal_nonzero = len([index for index in CAUSAL if magepro_coef[index] != 0])
 
-    return (h2g, hsq_p, coef, r2all, magepro_coef, magepro_r2)
+    return (h2g, hsq_p, magepro_coef, magepro_r2)
 
 def run_prscsx(target_gene, 
                 Z_eqtl,
@@ -494,17 +506,18 @@ def run_prscsx(target_gene,
                 pop,
                 num_people,
                 sumstats_files_external,
-                pops_external):
+                pops_external, set_h2, temp_dir):
     """
         target_gene - plink formated file for gene from target cohort
         Z_eqtl - simulated genotypes for target gene
         b_qtls - simulated latent effect sizes
-        gexpr -  simulated gene expression. Used to fit_sparse_regularized_lm
+        gexpr -  simulated gene expression. Used to fit_sparse_regularized_lm_cv_plink
         prscsx_tmp_path - path to where temporary file will be stored
         pop - target population
         num_people - number of people in target population
         sumstats_files_external - paths to summary statistics files
         pops_external - names of external populations
+        set_h2 - predetermined h2g
 
         Returns
         -------
@@ -514,11 +527,13 @@ def run_prscsx(target_gene,
     bim = np.array(bim)
 
     b_qtls = np.reshape(b_qtls.T, (bim.shape[0], 1))
-    best_penalty, coef, h2g, hsq_p, r2all = sim_eqtl(Z_eqtl, gexpr, prscsx_tmp_path)
+    # r2_lasso, coef, h2g, hsq_p, r2all = sim_eqtl(Z_eqtl, gexpr, prscsx_tmp_path, num_people)
+    h2g, hsq_p, gexpr = sim_eqtl_no_model(Z_eqtl, num_people, b_qtls, float(set_h2), temp_dir, 1)
 
-    if np.all(coef == 0):
-        print("using top1 backup")
-        r2all, r2_top1, coef = top1_cv(num_people, Z_eqtl, gexpr)
+
+    # if np.all(coef == 0):
+    #     print("using top1 backup")
+    #     r2all, r2_top1, coef = top1_cv(num_people, Z_eqtl, gexpr)
 
     # --- PRSCSx
     executable_dir="/expanse/lustre/projects/ddp412/sgolzari/MAGEPRO/BENCHMARK/PRScsx"
@@ -535,7 +550,10 @@ def run_prscsx(target_gene,
                                       samplesize_sumstats,
                                       population_sumstats,
                                       bim, 1e-7)
-    prscsx_r2, prscsx_coef = prscsx_cv(num_people, Z_eqtl, gexpr, prscsx_weights, best_penalty, 'lasso')
+
+    # prscsx_r2, prscsx_coef = prscsx_cv(num_people, Z_eqtl, gexpr, prscsx_weights, best_penalty, 'lasso')
+    # samplesizes, z_eqtl, gexpr, prscsx_weights, 'enet', h2g)
+    prscsx_r2, prscsx_coef = prscsx_cv_plink(num_people, Z_eqtl, gexpr, prscsx_weights, 'lasso', h2g)
 
     return (prscsx_coef, prscsx_r2)
 
@@ -779,17 +797,17 @@ def main():
 
                                 # 2. Simulate Beta, Simulate Gene Expression
                                 print(f"Simulate Latent Betas and Gene Expression for {curr_gene}")
+                                # effects, num_causal, num_snps, causal_index
                                 beta = create_betas(effects=effects_df[curr_pop].values,
                                                 num_causal=NCAUSAL,
-                                                L=L,
-                                                causal_index=index_causals,
-                                                eqtl_h2=EQTL_H2)
+                                                num_snps = len(L),
+                                                causal_index=index_causals)
 
                                 gexpr = sim_trait(np.dot(Z, beta), EQTL_H2)[0]
 
                                 # 2.5 For target population, build validation cohort for gene models (test gene model from METRO -> does it actually predict GE well?)
                                 if i == 0:
-                                    Z_validation = sim_geno(L, CURR_NUM_PEOPLE/5) # fifth of the original training cohort
+                                    Z_validation = sim_geno(L, CURR_NUM_PEOPLE // 5) # fifth of the original training cohort
                                     gexpr_validation = sim_trait(np.dot(Z_validation, beta), EQTL_H2)[0] # use the same beta
 
                                 # 3. Build SuSiE summary statistics
@@ -831,7 +849,7 @@ def main():
                             gcta_output_path = os.path.join(args.tmpdir, curr_gene)
 
                             print("Run MAGEPRO for", curr_gene)
-                            GCTA_h2, h2_pval, lasso_coef, lasso_r2, magepro_coef, magepro_r2 = run_magepro(
+                            GCTA_h2, h2_pval, magepro_coef, magepro_r2 = run_magepro(
                                 target_gene=random_gene_list[0],
                                 Z_eqtl=simulated_genotypes[POPS_LIST[0]],
                                 b_qtls=simulated_betas[POPS_LIST[0]],
@@ -840,7 +858,7 @@ def main():
                                 pop=POPS_LIST[0],
                                 num_people=NUMTARGET,
                                 sumstats_files_external=sumstats_files_external,
-                                pops_external=POPS_LIST[1::]  # here we just slice
+                                pops_external=POPS_LIST[1::], set_h2=EQTL_H2, temp_dir=args.tmpdir
                             )
                             if GCTA_h2 == float('-inf'):
                                 print("SuSiE summary statistics were not calculated properly for this gene.")
@@ -860,9 +878,17 @@ def main():
                                 pop=POPS_LIST[0],
                                 num_people=NUMTARGET,
                                 sumstats_files_external=sumstats_files_external,
-                                pops_external=POPS_LIST[1::]  # here we just slice
+                                pops_external=POPS_LIST[1::], set_h2=EQTL_H2, temp_dir=args.tmpdir
                             )
-
+                            if GCTA_h2 < 0:
+                                h2g_model = 0.05
+                            else:
+                                h2g_model = GCTA_h2
+                            lasso_r2, lasso_coef = fit_sparse_regularized_lm_cv_plink(NUMTARGET,
+                                                                                        simulated_genotypes[POPS_LIST[0]],
+                                                                                        simulated_gexprs[POPS_LIST[0]],
+                                                                                        'lasso',
+                                                                                        h2g_model)
                             for NUM_GWAS in GWAS_SAMPLE_SIZE:
                                 # 5. Perform TWAS
                                 print("Perform TWAS. GWAS NUM:", NUM_GWAS)
@@ -922,7 +948,7 @@ def main():
                                     print("Metro beta is NaN. Can't calculate correlation coefficient.")
                                 else:
                                     magepro_metro_corr = np.corrcoef(magepro_coef, metro_betas)[0, 1]
-                                
+
                                 magepro_lasso_corr = np.corrcoef(magepro_coef, lasso_coef)[0, 1]
                                 magepro_prscsx_corr = np.corrcoef(magepro_coef, prscsx_coef)[0, 1]
 
