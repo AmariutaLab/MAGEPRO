@@ -160,6 +160,6 @@ do
 		# simulate AFR gene models with lasso 
 		# use MAGEPRO 
 		#python3 Sim_Model.py <path to plink files> <sample size> <population> <simulated genotypes> <sumstats> <populations> <number of causal snps> <index of causal> <simulation number> <heritability of gene> <temporary directory> <output directory> <threads>
-		python3 ../Sim_Model.py ${randomgenes}/AFR_1KG_chr${chr}_${random_position} $numafr AFR ${simgeno}/simulated_genotypes_AFR.csv ${sumstatsdir}/sumstats_EUR_susie.csv,${sumstatsdir}/sumstats_AMR_susie.csv EUR,AMR 1 $index_causal $i $heritability $tempdir ${out} $threads
+		python3 ../Sim_Model_new.py ${randomgenes}/AFR_1KG_chr${chr}_${random_position} $numafr AFR ${simgeno}/simulated_genotypes_AFR.csv ${sumstatsdir}/sumstats_EUR_susie.csv,${sumstatsdir}/sumstats_AMR_susie.csv EUR,AMR 1 $index_causal $i $heritability $tempdir ${out} $threads
 	done
 done

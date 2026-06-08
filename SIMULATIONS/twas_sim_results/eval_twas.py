@@ -69,7 +69,8 @@ def summarize_r2(df):
 
 #path = "/expanse/lustre/projects/ddp412/sgolzari/MAGEPRO_REVIEWS/test_METRO/results/final_final_run_06_23.txt"
 #path = "/expanse/lustre/projects/ddp412/sgolzari/MAGEPRO_REVIEWS/test_METRO/results/clean_final_final_run_06_23.txt"
-path = "/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO_TWAS_SIMULATIONS/results/clean_validation_result_08_10.txt"
+#path = "/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO_TWAS_SIMULATIONS/results/clean_validation_result_08_10.txt"
+path = "/expanse/lustre/projects/ddp412/sgolzari/MAGEPRO_REVIEWS/simulation_02_10/results/results.txt"
 
 df = pd.read_csv(path, sep = '\t')
 
@@ -114,4 +115,4 @@ for H2GE in PHEN_VAR_GENE_COMPONENT:
                     "LASSO_R2_SEM": sem_r2_lasso, "PRSCSx_R2_SEM": sem_r2_prscsx, "MAGEPRO_R2_SEM": sem_r2_magepro, "METRO_R2_SEM": sem_r2_metro}])
                 df_power = pd.concat([df_power, new_row], ignore_index=True)
 
-df_power.to_csv("/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO/SIMULATIONS/twas_sim_results/twas_results_08_10.txt", sep = '\t', header = True, index = False)
+df_power.to_csv("/expanse/lustre/projects/ddp412/kakamatsu/MAGEPRO/SIMULATIONS/twas_sim_results/twas_results_02_21.txt", sep = '\t', header = True, index = False)

@@ -5,10 +5,10 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH -t 16:00:00
-#SBATCH -J cholesky_plinkstyle
+#SBATCH -J cholesky_plinkstyle_mismatch
 #SBATCH -A csd832
-#SBATCH -o /expanse/lustre/projects/ddp412/kakamatsu/working_err/cholesky_plinkstyle.%j.%N.out
-#SBATCH -e /expanse/lustre/projects/ddp412/kakamatsu/working_err/cholesky_plinkstyle.%j.%N.err
+#SBATCH -o /expanse/lustre/projects/ddp412/kakamatsu/working_err/cholesky_plinkstyle_mismatch.%j.%N.out
+#SBATCH -e /expanse/lustre/projects/ddp412/kakamatsu/working_err/cholesky_plinkstyle_mismatch.%j.%N.err
 #SBATCH --export=ALL
 #SBATCH --constraint="lustre"
 

@@ -12,7 +12,11 @@ import time
 import subprocess, os
 import gzip
 import os.path  
-from os import path  
+from os import path 
+
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 from magepro_simulations_functions import * # SEE HERE FOR ALL FUNCTION CALLS
 
 mvn = stats.multivariate_normal
@@ -24,7 +28,7 @@ pop = args[3] # population group for naming
 out = args[4] #output directory
 
 # --- added 5/25 for testing
-ldout = args[5]
+#ldout = args[5]
 # ---
 
 # --- read in 1kg plink files
@@ -47,8 +51,8 @@ G /= std_devs
 LD = (np.dot(G.T, G) / n) + np.eye(p_int) * 0.1 #this is the LD matrix!!!
 
 # --- added 5/25 for testing
-LD = LD / (1 + 0.1)
-LD = (LD + LD.T) / 2 
+#LD = LD / (1 + 0.1)
+#LD = (LD + LD.T) / 2 
 # sometimes due to numerical precision susie will throw a warning that matrix is not symmetric
 # I checked and it seems like it is symmetric up to precision 1e-6
 # just in case we will take the average of itself and its transpose
@@ -58,7 +62,7 @@ LD = (LD + LD.T) / 2
 L = linalg.cholesky(LD, lower=True)
 
 # --- added 5/25 for testing
-pd.DataFrame(LD).to_csv(f'{ldout}/{pop}_LD.csv', index=False, header=False)
+#pd.DataFrame(LD).to_csv(f'{ldout}/{pop}_LD.csv', index=False, header=False)
 #np.savez(f'{ldout}/{pop}_LD.npz', LD=LD)
 # ---
 

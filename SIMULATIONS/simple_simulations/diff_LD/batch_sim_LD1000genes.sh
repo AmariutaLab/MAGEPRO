@@ -4,11 +4,11 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=4G
-#SBATCH -t 24:00:00
+#SBATCH -t 16:00:00
 #SBATCH -J runsims_highLD
 #SBATCH -A csd832
-#SBATCH -o ../../../working_err/runsims_highLD.%j.%N.out
-#SBATCH -e ../../../working_err/runsims_highLD.%j.%N.err
+#SBATCH -o ../../../../working_err/runsims_highLD.%j.%N.out
+#SBATCH -e ../../../../working_err/runsims_highLD.%j.%N.err
 #SBATCH --export=ALL
 #SBATCH --constraint="lustre"
 
