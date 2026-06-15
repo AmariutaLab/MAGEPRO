@@ -586,7 +586,18 @@ if ( ("MAGEPRO" %in% model) & (ext > 0) ){
 			if (opt$skip_susie) {
                 if (opt$verbose >= 1) cat("... [HARDCODED] Overwriting Column 9 with Random Effects for", name, "\n")
                 df_temp <- get(loaded)
-                df_temp[,7] <- rnorm(nrow(df_temp), mean=0, sd=1)
+                rand_eff <- rnorm(nrow(df_temp), mean = 0, sd = 1)
+		#print(rand_eff)
+		#signal_eff <- df_temp[[7]]
+		#print(signal_eff)
+		#corr_test <- cor.test(rand_eff, signal_eff)
+		#random_susie_r <- corr_test$estimate
+		#random_susie_p <- corr_test$p.value
+		#print(random_susie_r)  # correlation
+		#print(random_susie_p)   # p-value
+		#rand_eff <- resid(lm(rand_eff ~ signal_eff))
+		#print(rand_eff)
+		df_temp[,7] <- rand_eff
                 assign(loaded, df_temp)
             }
 			wgt_magepro <- datasets_process_susie(name, eval(parse(text = loaded)), wgt_magepro)
@@ -594,6 +605,8 @@ if ( ("MAGEPRO" %in% model) & (ext > 0) ){
 	}
 	ext_magepro <- length(wgt_magepro)
 }else{
+	#random_susie_r <- NA
+	#random_susie_p <- NA
 	ext_magepro <- 0
 }
 
@@ -797,6 +810,16 @@ if ( opt$crossval <= 1 ) {
 			if (ext_magepro > 0){	
 				#pred.wgt.magepro <- weights.magepro_marquezluna(pred.wgt, wgt_magepro, genos$bed[cv.sample[-indx], , drop = FALSE], cv.train, genos$bim, opt$tmp, lasso_h2, FALSE)
 				pred.wgt.magepro <- weights.magepro(pred.wgt, wgt_magepro, genos$bed[cv.sample[-indx], , drop = FALSE], cv.train[,3], FALSE)
+				
+				# --- REVIEWS3: only train a constant multiple of pred.wgt for experiment 
+				#baseline_pred <- as.vector(
+    				#	genos$bed[cv.sample[-indx], , drop = FALSE] %*% pred.wgt
+				#)
+				#fit_scale <- lm(cv.train[,3] ~ baseline_pred)
+				#alpha <- coef(fit_scale)[2]
+				#pred.wgt.magepro <- alpha * pred.wgt
+				# ---
+				
 				cv.calls[ indx , colcount ] = genos$bed[ cv.sample[ indx ], , drop = FALSE] %*% pred.wgt.magepro
 				# --- for checking cor() of weights in CV
 				wgt.cv[,cv] = pred.wgt.magepro
@@ -942,6 +965,14 @@ if ("MAGEPRO" %in% model){
 	if (ext_magepro > 0){
 		#pred.wgt.mageprofull <- weights.magepro_marquezluna(pred.wgtfull, wgt_magepro, genos$bed, pheno, genos$bim, opt$tmp, lasso_h2, TRUE)
 		pred.wgt.mageprofull <- weights.magepro(pred.wgtfull, wgt_magepro, genos$bed, pheno[,3], TRUE)
+		# --- REVIEWS3---
+		#baseline_pred <- as.vector(genos$bed %*% pred.wgtfull)
+		#fit_scale <- lm(pheno[,3] ~ baseline_pred)
+		#alpha <- coef(fit_scale)[2]
+		#pred.wgt.mageprofull <- alpha * pred.wgtfull
+		#cf_total <- c(alpha)
+		#print(cf_total)
+		# ---
 		wgt.matrix[, colcount] = pred.wgt.mageprofull
 	}else{
 		wgt.matrix[, colcount] = NA
@@ -964,6 +995,7 @@ for (i in 1:(opt$crossval-1)){
 avg_cor <- mean(cors_weights)
 # ---
 
+#save( wgt.matrix, snps, cv.performance, hsq, hsq.pv, N.tot , wgtmagepro, cf_total, avg_training_r2_single, avg_training_r2_meta, avg_training_r2_pt, avg_training_r2_susie, avg_training_r2_susie_impact, avg_training_r2_prscsx, avg_training_r2_magepro_fullsumstats, avg_training_r2_magepro, var_cov, avg_cor, SINGLE_top1, random_susie_r, random_susie_p, file = paste( opt$out , ".wgt.RDat" , sep='' ) )
 save( wgt.matrix, snps, cv.performance, hsq, hsq.pv, N.tot , wgtmagepro, cf_total, avg_training_r2_single, avg_training_r2_meta, avg_training_r2_pt, avg_training_r2_susie, avg_training_r2_susie_impact, avg_training_r2_prscsx, avg_training_r2_magepro_fullsumstats, avg_training_r2_magepro, var_cov, avg_cor, SINGLE_top1, file = paste( opt$out , ".wgt.RDat" , sep='' ) )
 
 # --- CLEAN-UP

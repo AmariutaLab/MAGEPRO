@@ -4,7 +4,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
-#SBATCH -t 02:00:00
+#SBATCH -t 06:00:00
 #SBATCH -J MAGEPRO
 #SBATCH -A csd832
 #SBATCH -o ../working_err/MAGEPRO.%j.%N.out

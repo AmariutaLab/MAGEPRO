@@ -10,37 +10,52 @@ models <- strsplit(args[4], split = ",")[[1]] #comma-separated list of models us
 
 num_models <- length(models)
 genes <- read.table(file = genes_assign, header = F)$V1 #all genes in analysis
-r2_h2 <- matrix(0, length(genes), 2*num_models+8)
+r2_h2 <- matrix(0, length(genes), 2*num_models+10)
+
+reviews3_r_p <- FALSE
 
 for (j in 1:length(genes)){
-file <- paste0(weightsdir,"/",genes[j],".wgt.RDat") 
-if(file.exists(file)){
-if(file.info(file)$size > 0){
-load(file)
-#if (length(cv.performance[1,]) != num_models){ # this line is necessary for only this iteration of the analysis because I forgot to delete old files in the same weights directory 
-#next
-#}
-r2_h2[j,1] <- genes[j]
-r2_h2[j,2:(num_models+1)] <- cv.performance[1,]
-r2_h2[j,((num_models+2): (2*num_models+1) )] <- cv.performance[2,]
-r2_h2[j, 2*num_models+2] <- hsq[1]
-r2_h2[j, 2*num_models+3] <- hsq[2]
-r2_h2[j, 2*num_models+4] <- hsq.pv
-if (sum(is.na(wgtmagepro)) == 0){
-	r2_h2[j, 2*num_models+5] <- paste(wgtmagepro, collapse = ",")
-	r2_h2[j, 2*num_models+6] <- paste(cf_total, collapse = ",")
-}else{
-	r2_h2[j, 2*num_models+5] <- NA
-	r2_h2[j, 2*num_models+6] <-NA
-}
-r2_h2[j, 2*num_models+7] <- var_cov
-r2_h2[j, 2*num_models+8] <- avg_cor 
-
-}
-}
+#for (j in 1:2){
+	file <- paste0(weightsdir,"/",genes[j],".wgt.RDat") 
+	if(file.exists(file)){
+		if(file.info(file)$size > 0){
+			load(file)
+			#if (length(cv.performance[1,]) != num_models){ # this line is necessary for only this iteration of the analysis because I forgot to delete old files in the same weights directory 
+				#next
+			#}
+			r2_h2[j,1] <- genes[j]
+			r2_h2[j,2:(num_models+1)] <- cv.performance[1,]
+			r2_h2[j,((num_models+2): (2*num_models+1) )] <- cv.performance[2,]
+			r2_h2[j, 2*num_models+2] <- hsq[1]
+			r2_h2[j, 2*num_models+3] <- hsq[2]
+			r2_h2[j, 2*num_models+4] <- hsq.pv
+			if (sum(is.na(wgtmagepro)) == 0){
+				r2_h2[j, 2*num_models+5] <- paste(wgtmagepro, collapse = ",")
+				r2_h2[j, 2*num_models+6] <- paste(cf_total, collapse = ",")
+			}else{
+				r2_h2[j, 2*num_models+5] <- NA
+				r2_h2[j, 2*num_models+6] <-NA
+			}
+			r2_h2[j, 2*num_models+7] <- var_cov
+			r2_h2[j, 2*num_models+8] <- avg_cor 
+			#random_susie_r, random_susie_p
+			print(r2_h2[j,])
+			if (exists("random_susie_r")){
+				r2_h2[j, 2*num_models+9] <- random_susie_r
+				r2_h2[j, 2*num_models+10] <- random_susie_p
+				reviews3_r_p <- TRUE
+			}
+		}
+	}
 }
 h <- which(r2_h2[,1] == 0)
 if(length(h) > 0){r2_h2 <- r2_h2[-h,]}
 newcolnamesr2h2 <- c("gene", paste0(models, "_r2"), paste0(models, "_pv"), "hsq", "hsq_se", "hsq.pv", "datasets", "alphas", "var_covariates", "avg_cor")
+if (reviews3_r_p){
+	newcolnamesr2h2 <- append(newcolnamesr2h2, "random_r")
+	newcolnamesr2h2 <- append(newcolnamesr2h2, "random_p")	
+}else{
+	r2_h2 = r2_h2[,1:(2*num_models+8)]
+}
 colnames(r2_h2) <- newcolnamesr2h2
-write.table(r2_h2, file = paste0(output, "/MAGEPRO_results.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
+write.table(r2_h2, file = paste0(output, "/MAGEPRO_results_norandom_scale_redo.txt"), row.names = F, col.names = T, sep = "\t", quote = F)

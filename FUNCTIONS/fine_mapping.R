@@ -80,6 +80,18 @@ gene_fine_mapping <- function(gene_txt, cohort, cohort_data, cohort_path, cohort
 		write.table(temp_df, file = file_path, sep = ' ', quote = F, col.names = T, row.names = F)
 	}
 
+	# --- REVIEWS3 negative control, replace betas with randomly sampled sumstats 
+	#df_sumstats <- fread(file_path, select = ( c(1:7)) )
+	#df_sumstats[,5] <- rnorm(nrow(df_sumstats), mean = 0, sd = 1) # BETA
+	#df_sumstats[,6] <- 1 # SE
+	#print(df_sumstats)
+	#gene_txt <- paste0('random_', gene_txt)
+	#cohort_path <- out
+	#file_path = file.path(cohort_path, gene_txt)
+	#print(file_path)
+	#write.table(df_sumstats, file = file_path, sep = ' ', quote = F, col.names = T, row.names = F)
+	# --- COMMENT OUT AFTER
+
 	gene <- file_path_sans_ext(gene_txt)
 	to_return <- file.path(out, gene_txt)
 	

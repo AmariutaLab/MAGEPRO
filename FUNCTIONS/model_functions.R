@@ -436,6 +436,8 @@ weights.magepro = function(basemodel, wgts, geno, pheno, save_alphas) {
 	#2. run ridge regression to find optimal coefficients for each dataset
 	y <- cv.glmnet(x = eq , y = pheno, alpha = 0, nfold = 5, intercept = T, standardize = T)
 	cf = coef(y, s = "lambda.min")[2:(ext+2)]
+	#y <- lm(pheno ~ ., data = as.data.frame(eq)) # linear model version for debugging negative control during REVIEWS3
+	#cf <- coef(y)[-1] # linear model version for debugging negative control during REVIEWS3
 	predtext <- "cf[1]*basemodel"
 	for (i in 2:(length(cf))){
 		predtext <- paste0(predtext, " + cf[", i, "]*", wgts[(i-1)])
