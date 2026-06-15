@@ -6,7 +6,7 @@ args <- commandArgs(trailingOnly = TRUE)
 output <- args[1] #path to output directory
 weightsdir <- args[2] #path to directory where R data files are stored 
 genes_assign <- args[3] #path to genes assigned file
-models <- strsplit(args[4], split = ",")[[1]] #comma-separated list of models used (SINGLE,META,MAGEPRO)
+models <- strsplit(args[4], split = ",")[[1]] #comma-separated list of models used (LASSO,META,MAGEPRO)
 
 num_models <- length(models)
 genes <- read.table(file = genes_assign, header = F)$V1 #all genes in analysis

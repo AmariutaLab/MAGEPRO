@@ -14,7 +14,7 @@ Rscript RUN_MAGEPRO_PIPELINE.R --bfile ../DATA/MAGEPRO_data/GEUVADIS_EUR_genotyp
 --rerun FALSE \
 --sumstats_dir ../DATA/MAGEPRO_data/MAGEPRO_SUMSTATS_SuSiE \
 --sumstats mesahis \
---models SINGLE,MAGEPRO \
+--models LASSO,MAGEPRO \
 --ss 352 \
 --hsq_p 1 \
 --verbose 2 \

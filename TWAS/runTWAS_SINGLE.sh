@@ -29,5 +29,5 @@ out=${outbase}/${pheno}
 #mkdir ${out}
 
 for chr in {1..22}; do \
-	Rscript ${home}/fusion_multipop/FUSION.assoc_test_multipop.R --force_model SINGLE --chr $chr --ref_ld_chr $ld --sumstats $gwas --weights $wgt --weights_dir $wgtdir --out ${out}.${chr}.dat; \
+	Rscript ${home}/fusion_multipop/FUSION.assoc_test_multipop.R --force_model LASSO --chr $chr --ref_ld_chr $ld --sumstats $gwas --weights $wgt --weights_dir $wgtdir --out ${out}.${chr}.dat; \
 done
