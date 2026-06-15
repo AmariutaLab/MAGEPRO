@@ -33,9 +33,10 @@ option_list = list(
               help="Path to external sumstats"),
   make_option("--sumstats", action="store", default=NA, type='character',
               help="Comma-separated list of external datasets to include"),
-  make_option("--models", action="store", default="SINGLE,META,MAGEPRO",
+  make_option("--models", action="store", default="LASSO,META,MAGEPRO",
               help="Comma-separated list of models to use \n 
-	      SINGLE = single ancestry FUSION lasso approach \n
+	      LASSO = single ancestry FUSION lasso approach \n
+	      LASSO_OLS = post-LASSO OLS on LASSO-selected variants \n
 	      META = ss-weighted meta-analysis of datasets \n 
 	      PT = pruning and thresholding \n
 	      SuSiE = sum of single effects regression \n

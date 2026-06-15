@@ -203,7 +203,7 @@ datasets_process <- function(wgt, snp_ref){
 #load in gene models
 if (file.exists(file.wgts)){
 	load(file.wgts)
-	#colnames(wgt.matrix) <- c("SINGLE","META", "PT", "SuSiE", "PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO") # for one iteration where "P+T" name was producing weird errors due to the "+" symbol
+	#colnames(wgt.matrix) <- c("LASSO","META", "PT", "SuSiE", "PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO") # for one iteration where "P+T" name was producing weird errors due to the "+" symbol
 	weights <- c()
 	for (c in 1:ncol(wgt.matrix)){
 		assign(paste0("pred.wgt.", colnames(wgt.matrix)[c]), datasets_process(wgt.matrix[,c], snps))

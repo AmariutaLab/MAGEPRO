@@ -157,7 +157,7 @@ MAGEPRO utilizes external eQTL summary statistics to improve gene models trained
 | --subset_genes | Path to file with genes of interest in one column |
 | --sumstats_dir | Path to external datasets (required if using MAGEPRO or META models) |
 | --sumstats | Comma-separated list of external datasets to include (required if using MAGEPRO or META models) |
-| --models | Comma-separated list of models to use. Options: "SINGLE" "META" "PT" "SuSiE" "SuSiE_IMPACT" "PRSCSx" "MAGEPRO_fullsumstats" and "MAGEPRO" (default SINGLE,META,MAGEPRO) |
+| --models | Comma-separated list of models to use. Options: "LASSO" "LASSO_OLS" "META" "PT" "SuSiE" "SuSiE_IMPACT" "PRSCSx" "MAGEPRO_fullsumstats" and "MAGEPRO" (default LASSO,META,MAGEPRO) |
 | --ss | Comma-separated list of sample sizes of sumstats in the same order as --sumstats (required if using "META" model or --cell_type_meta) |
 | --PATH_plink | Path to plink executable (default "plink") |
 | --PATH-gcta | Path to gcta executable (default "gcta_nr_robust") |
@@ -193,7 +193,7 @@ The following variables are saved in this output file:
 
 | name | description | 
 | ---- | ----- | 
-| wgt.matrix | final gene model weights, one column for each model type used (SINGLE, META, MAGEPRO) | 
+| wgt.matrix | final gene model weights, one column for each model type used (LASSO, META, MAGEPRO) | 
 | snps | information about snps used in the gene model, in plink .bim format | 
 | cv.performance | matrix with a column for each model type used and a row for each of r-squared and p-value. these are the results of cross-validation | 
 | hsq | gcta-estimated heritability. set to NA if gcta fails to converge | 
@@ -201,7 +201,8 @@ The following variables are saved in this output file:
 | N.tot | sample size | 
 | wgtmagepro | datasets used in the MAGEPRO model | 
 | cf_total | mixing weights (alphas from regression) used to combine the datasets from wgtmagepro | 
-| avg_training_r2_single | average r-squared of SINGLE model on training cohort | 
+| avg_training_r2_lasso | average r-squared of LASSO model on training cohort |
+| avg_training_r2_lasso_ols | average r-squared of LASSO_OLS model on training cohort | 
 | avg_training_r2_meta | average r-squared of META model on training cohort | 
 | avg_training_r2_magepro | average r-squared of MAGEPRO model on training cohort | 
 | var_cov | variance explained in gene expression by covariates | 
@@ -271,7 +272,7 @@ If you would like to run MAGEPRO on one gene, it is possible to run MAGEPRO.R se
 | **--tmp** | Path to store temporary files |
 | --sumstats_dir | Path to external datasets (required if using MAGEPRO or META models) |
 | --sumstats | Comma-separated list of external datasets to include (required if using MAGEPRO or META models) |
-| --models | Comma-separated list of models to use. Options: "SINGLE" "META" "PT" "SuSiE" "SuSiE_IMPACT" "PRSCSx" "MAGEPRO_fullsumstats" and "MAGEPRO" (default SINGLE,META,MAGEPRO) |
+| --models | Comma-separated list of models to use. Options: "LASSO" "LASSO_OLS" "META" "PT" "SuSiE" "SuSiE_IMPACT" "PRSCSx" "MAGEPRO_fullsumstats" and "MAGEPRO" (default LASSO,META,MAGEPRO) |
 | --ss | Comma-separated list of sample sizes of sumstats in the same order as --sumstats |
 | --pheno | Path to molecular phenotype file in PLINK format (taken from bfile otherwise) |
 | --PATH_plink | Path to plink executable (default "plink") |

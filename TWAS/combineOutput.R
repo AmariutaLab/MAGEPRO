@@ -9,7 +9,7 @@ gwas = args[2]
 anc = args[3]
 dataset = args[4]
 
-models <- c("ALL", "MAGEPRO", "PRSCSx", "SINGLE", "SuSiE")
+models <- c("ALL", "MAGEPRO", "PRSCSx", "LASSO", "SuSiE")
 
 pathbase <- paste0("output_", gwas, "_", anc, "_", dataset, "_")
 

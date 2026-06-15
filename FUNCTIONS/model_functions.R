@@ -41,6 +41,34 @@ weights.lasso = function( input , hsq , snp , out=NA ) {
 	return( eff.wgt )
 }
 
+# PLINK: post-LASSO OLS
+weights.lasso_ols = function( input , hsq , snp , genos , pheno , out=NA , lasso_wgt=NULL ) {
+	# PURPOSE: post-LASSO OLS - select SNPs with nonzero LASSO coefficients, re-estimate betas with OLS
+	# input = plink file (phenotype in fam file)
+	# hsq = heritability estimate used for calibrating LASSO regression
+	# snp = vector of snps used in the gene model
+	# genos = genotype matrix (rows = people, cols = snps) for OLS refitting
+	# pheno = phenotype vector for OLS refitting
+	# lasso_wgt = optional pre-computed LASSO weights (avoids duplicate PLINK call)
+	# RETURN: sparse vector of OLS effect sizes for LASSO-selected SNPs
+	if ( is.null(lasso_wgt) ) {
+		lasso_wgt = weights.lasso( input , hsq , snp , out=out )
+	}
+	eff.wgt = rep(0, length(snp))
+	if ( sum(is.na(lasso_wgt)) == length(lasso_wgt) ) {
+		return( rep(NA, length(snp)) )
+	}
+	selected = which(lasso_wgt != 0)
+	if ( length(selected) == 0 ) {
+		return( eff.wgt )
+	}
+	y = as.matrix(pheno)
+	X = genos[, selected, drop=FALSE]
+	fit = lm( y ~ X )
+	eff.wgt[selected] = coef(fit)[-1]
+	return( eff.wgt )
+}
+
 # Marginal Z-scores (used for top1)
 weights.marginal = function( genos , pheno , beta=F ) {
 	# PURPOSE: compute marginal effect size estimates 
