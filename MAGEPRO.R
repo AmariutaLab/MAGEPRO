@@ -680,6 +680,9 @@ if ( opt$crossval <= 1 ) {
 				pred.wgt.lasso_ols <- t(pred.wgt.lasso_ols)
 			}
 			cv.calls[ indx , colcount ] = genos$bed[ cv.sample[ indx ] , , drop = FALSE] %*% pred.wgt.lasso_ols
+			#print(sum(!is.na(genos$bed[cv.sample[-indx], , drop = FALSE] %*% pred.wgt.lasso_ols))) # 0
+			#print(sum(is.na(pred.wgt.lasso_ols))) # 1
+			#print(sum(!is.na(pred.wgt.lasso_ols))) # 293
 			pred_train_lasso_ols = summary(lm( cv.all[-indx,3] ~ (genos$bed[ cv.sample[-indx], , drop = FALSE] %*% pred.wgt.lasso_ols)))
 			r2_training_lasso_ols = append(r2_training_lasso_ols, pred_train_lasso_ols$adj.r.sq)
 			colcount = colcount + 1
