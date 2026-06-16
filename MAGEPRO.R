@@ -676,6 +676,7 @@ if ( opt$crossval <= 1 ) {
 				pred.wgt.lasso_ols = weights.marginal( genos$bed[ cv.sample[ -indx ],] , as.matrix(cv.train[,3,drop=F]) , beta=T )
 				pred.wgt.lasso_ols[ - which.max( pred.wgt.lasso_ols^2 ) ] = 0
 			}
+			pred.wgt.lasso_ols[is.na(pred.wgt.lasso_ols)] <- 0
 			if (length(pred.wgt.lasso_ols) == 1){
 				pred.wgt.lasso_ols <- t(pred.wgt.lasso_ols)
 			}
@@ -896,6 +897,7 @@ if ("LASSO_OLS" %in% model){
 		pred.wgtfull.lasso_ols = weights.marginal( genos$bed , as.matrix(pheno[,3]) , beta=T )
 		pred.wgtfull.lasso_ols[ - which.max( pred.wgtfull.lasso_ols^2 )] = 0
 	}
+	pred.wgtfull.lasso_ols[is.na(pred.wgtfull.lasso_ols)] <- 0
 	if(length(pred.wgtfull.lasso_ols) == 1){
 		pred.wgtfull.lasso_ols <- t(pred.wgtfull.lasso_ols)
 	}
