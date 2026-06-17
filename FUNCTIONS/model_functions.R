@@ -69,6 +69,24 @@ weights.lasso_ols = function( input , hsq , snp , genos , pheno , out=NA , lasso
 	return( eff.wgt )
 }
 
+# LASSO weight rescaling
+weights.lasso_rescale = function( pred.wgt , genos , pheno ) {
+	# PURPOSE: learn a scalar multiplier for LASSO weights via OLS on training predictions
+	# pred.wgt = LASSO weight vector
+	# genos = genotype matrix (rows = people, cols = snps)
+	# pheno = phenotype vector
+	# RETURN: pred.wgt multiplied by scalar alpha (1 if alpha is NA or baseline has zero variance)
+	baseline_pred <- as.vector(genos %*% pred.wgt)
+	if ( !is.na(sd(baseline_pred, na.rm=TRUE)) && sd(baseline_pred, na.rm=TRUE) != 0 ) {
+		fit_scale <- lm(pheno ~ baseline_pred)
+		alpha <- coef(fit_scale)[2]
+		if ( is.na(alpha) ) alpha <- 1
+	} else {
+		alpha <- 1
+	}
+	return( alpha * pred.wgt )
+}
+
 # Marginal Z-scores (used for top1)
 weights.marginal = function( genos , pheno , beta=F ) {
 	# PURPOSE: compute marginal effect size estimates 

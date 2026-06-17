@@ -27,6 +27,7 @@ option_list = list(
               help="Comma-separated list of models to use \n 
 	      LASSO = single ancestry FUSION lasso approach \n
 	      LASSO_OLS = post-LASSO OLS on LASSO-selected variants \n
+	      LASSO_RESCALE = LASSO weights rescaled by a constant learned on training predictions \n
 	      META = ss-weighted meta-analysis of datasets \n 
 	      PT = pruning and thresholding \n
 	      SuSiE = sum of single effects regression \n
@@ -124,7 +125,7 @@ if (!is.na(opt$gene)){
 
 #models to use
 model <- strsplit(opt$models, ",", fixed = TRUE)[[1]]
-if ( sum(! model %in% c("LASSO", "LASSO_OLS", "META", "PT", "SuSiE", "SuSiE_IMPACT","PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO")) > 0 | length(model) > 9 ){
+if ( sum(! model %in% c("LASSO", "LASSO_OLS", "LASSO_RESCALE", "META", "PT", "SuSiE", "SuSiE_IMPACT","PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO")) > 0 | length(model) > 10 ){
 	cat( "ERROR: Please input valid models \n" , sep='', file=stderr() )
     cleanup()
     q()
@@ -132,7 +133,7 @@ if ( sum(! model %in% c("LASSO", "LASSO_OLS", "META", "PT", "SuSiE", "SuSiE_IMPA
 
 if (opt$verbose >= 1) cat("### USING THE FOLLOWING MODELS:", opt$models, "\n")
 
-order <- c("LASSO","LASSO_OLS","META", "PT", "SuSiE", "SuSiE_IMPACT", "PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO")
+order <- c("LASSO","LASSO_OLS","LASSO_RESCALE","META", "PT", "SuSiE", "SuSiE_IMPACT", "PRSCSx", "MAGEPRO_fullsumstats", "MAGEPRO")
 types <- model[match(order, model)]
 types <- unique(types[!is.na(types)])
 
@@ -594,7 +595,7 @@ if ( ("MAGEPRO" %in% model) & (ext > 0) ){
 
 # --- CROSSVALIDATION ANALYSES
 set.seed(1)
-avg_training_r2_lasso <- avg_training_r2_lasso_ols <- avg_training_r2_meta <- avg_training_r2_pt <- avg_training_r2_susie <- avg_training_r2_susie_impact <- avg_training_r2_prscsx <- avg_training_r2_magepro_fullsumstats <- avg_training_r2_magepro <- NA
+avg_training_r2_lasso <- avg_training_r2_lasso_ols <- avg_training_r2_lasso_rescale <- avg_training_r2_meta <- avg_training_r2_pt <- avg_training_r2_susie <- avg_training_r2_susie_impact <- avg_training_r2_prscsx <- avg_training_r2_magepro_fullsumstats <- avg_training_r2_magepro <- NA
 #default crossval = 5 fold split
 if ( opt$crossval <= 1 ) { 
 	if ( opt$verbose >= 1 ) cat("### SKIPPING CROSS-VALIDATION\n")
@@ -618,6 +619,7 @@ if ( opt$crossval <= 1 ) {
 
 	r2_training_lasso <- c()
 	r2_training_lasso_ols <- c()
+	r2_training_lasso_rescale <- c()
 	r2_training_meta <- c()
 	r2_training_pt <- c()
 	r2_training_susie <- c()
@@ -676,6 +678,8 @@ if ( opt$crossval <= 1 ) {
 				pred.wgt.lasso_ols = weights.marginal( genos$bed[ cv.sample[ -indx ],] , as.matrix(cv.train[,3,drop=F]) , beta=T )
 				pred.wgt.lasso_ols[ - which.max( pred.wgt.lasso_ols^2 ) ] = 0
 			}
+			replace_idx <- is.na(pred.wgt.lasso_ols) & !is.na(pred.wgt)
+			pred.wgt.lasso_ols[replace_idx] <- pred.wgt[replace_idx]
 			pred.wgt.lasso_ols[is.na(pred.wgt.lasso_ols)] <- 0
 			if (length(pred.wgt.lasso_ols) == 1){
 				pred.wgt.lasso_ols <- t(pred.wgt.lasso_ols)
@@ -686,6 +690,19 @@ if ( opt$crossval <= 1 ) {
 			colcount = colcount + 1
 		}
 		#--------------------------------------------------------------------------
+
+		# LASSO_RESCALE--------------------------------------------------------------
+		if ("LASSO_RESCALE" %in% model){ # if lm(pheno ~ baseline_pred) returns NA, weights.lasso_rescale does not rescale the pred.wgt (should not happen though)
+			pred.wgt.lasso_rescale = weights.lasso_rescale( pred.wgt, genos$bed[cv.sample[-indx], , drop = FALSE], cv.train[,3] )
+			if (length(pred.wgt.lasso_rescale) == 1){
+				pred.wgt.lasso_rescale <- t(pred.wgt.lasso_rescale)
+			}
+			cv.calls[ indx , colcount ] = genos$bed[ cv.sample[ indx ] , , drop = FALSE] %*% pred.wgt.lasso_rescale
+			pred_train_lasso_rescale = summary(lm( cv.all[-indx,3] ~ (genos$bed[ cv.sample[-indx], , drop = FALSE] %*% pred.wgt.lasso_rescale)))
+			r2_training_lasso_rescale = append(r2_training_lasso_rescale, pred_train_lasso_rescale$adj.r.sq)
+			colcount = colcount + 1
+		}
+		#------------------------------------------------------------------------------
 
 		# SS-WEIGHTED META-ANALYSIS-------------------------------------------------------------
 		if ("META" %in% model){
@@ -852,6 +869,7 @@ if ( opt$crossval <= 1 ) {
 	#take average of r2 on training set
 	if ("LASSO" %in% model) avg_training_r2_lasso <- mean(r2_training_lasso)
 	if ("LASSO_OLS" %in% model) avg_training_r2_lasso_ols <- mean(r2_training_lasso_ols)
+	if ("LASSO_RESCALE" %in% model) avg_training_r2_lasso_rescale <- mean(r2_training_lasso_rescale)
 	if ("META" %in% model) avg_training_r2_meta <- mean(r2_training_meta)
 	if ("PT" %in% model) avg_training_r2_pt <- mean(r2_training_pt)
 	if ("SuSiE" %in% model) avg_training_r2_susie <- mean(r2_training_susie)
@@ -894,11 +912,22 @@ if ("LASSO_OLS" %in% model){
 		pred.wgtfull.lasso_ols = weights.marginal( genos$bed , as.matrix(pheno[,3]) , beta=T )
 		pred.wgtfull.lasso_ols[ - which.max( pred.wgtfull.lasso_ols^2 )] = 0
 	}
+	replace_idx <- is.na(pred.wgtfull.lasso_ols) & !is.na(pred.wgtfull)
+	pred.wgtfull.lasso_ols[replace_idx] <- pred.wgtfull[replace_idx]
 	pred.wgtfull.lasso_ols[is.na(pred.wgtfull.lasso_ols)] <- 0
 	if(length(pred.wgtfull.lasso_ols) == 1){
 		pred.wgtfull.lasso_ols <- t(pred.wgtfull.lasso_ols)
 	}
 	wgt.matrix[, colcount] = pred.wgtfull.lasso_ols
+	colcount = colcount + 1
+}
+# --- LASSO_RESCALE
+if ("LASSO_RESCALE" %in% model){
+	pred.wgtfull.lasso_rescale = weights.lasso_rescale( pred.wgtfull, genos$bed, pheno[,3] )
+	if(length(pred.wgtfull.lasso_rescale) == 1){
+		pred.wgtfull.lasso_rescale <- t(pred.wgtfull.lasso_rescale)
+	}
+	wgt.matrix[, colcount] = pred.wgtfull.lasso_rescale
 	colcount = colcount + 1
 }
 # --- SS-WEIGHTED META-ANALYSIS
@@ -996,7 +1025,7 @@ for (i in 1:(opt$crossval-1)){
 avg_cor <- mean(cors_weights)
 # ---
 
-save( wgt.matrix, snps, cv.performance, hsq, hsq.pv, N.tot , wgtmagepro, cf_total, avg_training_r2_lasso, avg_training_r2_lasso_ols, avg_training_r2_meta, avg_training_r2_pt, avg_training_r2_susie, avg_training_r2_susie_impact, avg_training_r2_prscsx, avg_training_r2_magepro_fullsumstats, avg_training_r2_magepro, var_cov, avg_cor, LASSO_top1, file = paste( opt$out , ".wgt.RDat" , sep='' ) )
+save( wgt.matrix, snps, cv.performance, hsq, hsq.pv, N.tot , wgtmagepro, cf_total, avg_training_r2_lasso, avg_training_r2_lasso_ols, avg_training_r2_lasso_rescale, avg_training_r2_meta, avg_training_r2_pt, avg_training_r2_susie, avg_training_r2_susie_impact, avg_training_r2_prscsx, avg_training_r2_magepro_fullsumstats, avg_training_r2_magepro, var_cov, avg_cor, LASSO_top1, file = paste( opt$out , ".wgt.RDat" , sep='' ) )
 
 # --- CLEAN-UP
 if ( opt$verbose >= 1 ) cat("### CLEANING UP\n")
