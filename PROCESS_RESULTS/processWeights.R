@@ -6,11 +6,11 @@ args <- commandArgs(trailingOnly = TRUE)
 output <- args[1] #path to output directory
 weightsdir <- args[2] #path to directory where R data files are stored 
 genes_assign <- args[3] #path to genes assigned file
-models <- strsplit(args[4], split = ",")[[1]] #comma-separated list of models used (LASSO,META,MAGEPRO)
+models <- strsplit(args[4], split = ",")[[1]] #comma-separated list of models used (e.g. LASSO,LASSO_RESCALE,META,MAGEPRO)
 
 num_models <- length(models)
 genes <- read.table(file = genes_assign, header = F)$V1 #all genes in analysis
-r2_h2 <- matrix(0, length(genes), 2*num_models+8)
+r2_h2 <- matrix(0, length(genes), 2*num_models+9)
 
 for (j in 1:length(genes)){
 file <- paste0(weightsdir,"/",genes[j],".wgt.RDat") 
@@ -34,13 +34,18 @@ if (sum(is.na(wgtmagepro)) == 0){
 	r2_h2[j, 2*num_models+6] <-NA
 }
 r2_h2[j, 2*num_models+7] <- var_cov
-r2_h2[j, 2*num_models+8] <- avg_cor 
+r2_h2[j, 2*num_models+8] <- avg_cor
+if (exists("rescale_alpha")) {
+	r2_h2[j, 2*num_models+9] <- rescale_alpha
+} else {
+	r2_h2[j, 2*num_models+9] <- NA
+}
 
 }
 }
 }
 h <- which(r2_h2[,1] == 0)
 if(length(h) > 0){r2_h2 <- r2_h2[-h,]}
-newcolnamesr2h2 <- c("gene", paste0(models, "_r2"), paste0(models, "_pv"), "hsq", "hsq_se", "hsq.pv", "datasets", "alphas", "var_covariates", "avg_cor")
+newcolnamesr2h2 <- c("gene", paste0(models, "_r2"), paste0(models, "_pv"), "hsq", "hsq_se", "hsq.pv", "datasets", "alphas", "var_covariates", "avg_cor", "rescale_alpha")
 colnames(r2_h2) <- newcolnamesr2h2
-write.table(r2_h2, file = paste0(output, "/MAGEPRO_results_postlasso_ols_redo.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
+write.table(r2_h2, file = paste0(output, "/MAGEPRO_results.txt"), row.names = F, col.names = T, sep = "\t", quote = F)

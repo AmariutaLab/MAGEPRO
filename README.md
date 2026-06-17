@@ -224,8 +224,25 @@ The following variables are saved in this output file:
 | avg_training_r2_meta | average r-squared of META model on training cohort | 
 | avg_training_r2_magepro | average r-squared of MAGEPRO model on training cohort | 
 | var_cov | variance explained in gene expression by covariates | 
+| rescale_alpha | scalar multiplier learned for LASSO_RESCALE on the full sample (NA if LASSO_RESCALE was not used or scaling could not be estimated) |
 
-> See "PROCESS_RESULTS" directory on how to format the results from cv.performance across all genes into a tab-delimited dataframe. 
+> See "PROCESS_RESULTS" directory on how to format the results from cv.performance across all genes into a tab-delimited dataframe. The compiled table includes `rescale_alpha` when present in the per-gene `.wgt.RDat` files. 
+
+### Compiling results across genes (PROCESS_RESULTS)
+
+From the `PROCESS_RESULTS` directory, run:
+
+```bash
+bash runProcess.sh <output_dir> <weights_dir> <genes_file> <models>
+```
+
+Example:
+
+```bash
+bash runProcess.sh ./results ./weights ./genes.txt LASSO,LASSO_RESCALE,META,MAGEPRO
+```
+
+This writes `MAGEPRO_results.txt` with one row per gene. Columns include cross-validation r-squared and p-values for each model (`<MODEL>_r2`, `<MODEL>_pv`), heritability estimates, MAGEPRO mixing weights, and `rescale_alpha` (the LASSO_RESCALE scaling factor from the full-sample fit; NA if not applicable).
 
 ## Input data format
 > The MAGEPRO pipeline is designed to handle files that are formatted like the gene expression and covariate files made available by GTEx.

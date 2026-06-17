@@ -17,6 +17,6 @@ conda activate r_env
 output=$1 #output dir
 weightsdir=$2 #weights dir
 genes=$3 #file with genes
-models=$4 #models used LASSO,META,MAGEPRO
+models=$4 #comma-separated models used, e.g. LASSO,LASSO_RESCALE,META,MAGEPRO
 
 Rscript processWeights.R $output $weightsdir $genes $models
