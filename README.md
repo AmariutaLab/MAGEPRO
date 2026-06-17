@@ -137,6 +137,23 @@ It takes around 2 minutes to download the sample datasets and 30 seconds to run 
 
 MAGEPRO utilizes external eQTL summary statistics to improve gene models trained on a specific population. See PROCESS_DATASET directory for more information on how to prepare summary statistics used in our analysis.
 
+## Gene expression prediction models supported
+
+Pass one or more model names to `--models` as a comma-separated list (default: `LASSO,META,MAGEPRO`).
+
+| Model | Description |
+| ----- | ----------- |
+| LASSO | PLINK-style L1-regularized linear regression |
+| LASSO_OLS | Post-LASSO least squares: OLS coefficient estimates for SNPs with nonzero LASSO weights |
+| LASSO_RESCALE | LASSO model with a single learned scaling factor |
+| META | Sample-size-weighted meta-analysis of target and external eQTL summary statistics |
+| PT | Pruning and thresholding |
+| SuSiE | Sum of single effects regression |
+| SuSiE_IMPACT | Sum of single effects regression with SNP-level annotation priors |
+| PRSCSx | Multi-ancestry PRS method applied to gene expression prediction |
+| MAGEPRO_fullsumstats | Linear combination of target and external datasets with no regularization |
+| MAGEPRO | Linear combination of target and external datasets with L2 regularization |
+
 ## Command-line options for the full pipeline (RUN_MAGEPRO_PIPELINE.R)
 
 **required flags are bolded**
@@ -157,7 +174,7 @@ MAGEPRO utilizes external eQTL summary statistics to improve gene models trained
 | --subset_genes | Path to file with genes of interest in one column |
 | --sumstats_dir | Path to external datasets (required if using MAGEPRO or META models) |
 | --sumstats | Comma-separated list of external datasets to include (required if using MAGEPRO or META models) |
-| --models | Comma-separated list of models to use. Options: "LASSO" "LASSO_OLS" "META" "PT" "SuSiE" "SuSiE_IMPACT" "PRSCSx" "MAGEPRO_fullsumstats" and "MAGEPRO" (default LASSO,META,MAGEPRO) |
+| --models | Comma-separated list of models to use (see [Gene expression prediction models supported](#gene-expression-prediction-models-supported); default LASSO,META,MAGEPRO) |
 | --ss | Comma-separated list of sample sizes of sumstats in the same order as --sumstats (required if using "META" model or --cell_type_meta) |
 | --PATH_plink | Path to plink executable (default "plink") |
 | --PATH-gcta | Path to gcta executable (default "gcta_nr_robust") |
@@ -202,7 +219,8 @@ The following variables are saved in this output file:
 | wgtmagepro | datasets used in the MAGEPRO model | 
 | cf_total | mixing weights (alphas from regression) used to combine the datasets from wgtmagepro | 
 | avg_training_r2_lasso | average r-squared of LASSO model on training cohort |
-| avg_training_r2_lasso_ols | average r-squared of LASSO_OLS model on training cohort | 
+| avg_training_r2_lasso_ols | average r-squared of LASSO_OLS model on training cohort |
+| avg_training_r2_lasso_rescale | average r-squared of LASSO_RESCALE model on training cohort | 
 | avg_training_r2_meta | average r-squared of META model on training cohort | 
 | avg_training_r2_magepro | average r-squared of MAGEPRO model on training cohort | 
 | var_cov | variance explained in gene expression by covariates | 
@@ -272,7 +290,7 @@ If you would like to run MAGEPRO on one gene, it is possible to run MAGEPRO.R se
 | **--tmp** | Path to store temporary files |
 | --sumstats_dir | Path to external datasets (required if using MAGEPRO or META models) |
 | --sumstats | Comma-separated list of external datasets to include (required if using MAGEPRO or META models) |
-| --models | Comma-separated list of models to use. Options: "LASSO" "LASSO_OLS" "META" "PT" "SuSiE" "SuSiE_IMPACT" "PRSCSx" "MAGEPRO_fullsumstats" and "MAGEPRO" (default LASSO,META,MAGEPRO) |
+| --models | Comma-separated list of models to use (see [Gene expression prediction models supported](#gene-expression-prediction-models-supported); default LASSO,META,MAGEPRO) |
 | --ss | Comma-separated list of sample sizes of sumstats in the same order as --sumstats |
 | --pheno | Path to molecular phenotype file in PLINK format (taken from bfile otherwise) |
 | --PATH_plink | Path to plink executable (default "plink") |

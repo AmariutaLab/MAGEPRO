@@ -37,6 +37,7 @@ option_list = list(
               help="Comma-separated list of models to use \n 
 	      LASSO = single ancestry FUSION lasso approach \n
 	      LASSO_OLS = post-LASSO OLS on LASSO-selected variants \n
+	      LASSO_RESCALE = LASSO weights rescaled by a constant learned on training predictions \n
 	      META = ss-weighted meta-analysis of datasets \n 
 	      PT = pruning and thresholding \n
 	      SuSiE = sum of single effects regression \n
