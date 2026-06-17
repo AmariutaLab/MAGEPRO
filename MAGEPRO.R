@@ -674,13 +674,17 @@ if ( opt$crossval <= 1 ) {
 			# NOTE: lasso_wgt=pred.wgt when lasso pushes all variants to 0 is top1. This means the resulting model from weights.lasso_ols will be top1 as well. 
 			pred.wgt.lasso_ols = weights.lasso_ols( cv.file , lasso_h2 , snp=genos$bim[,2], genos=genos$bed[cv.sample[-indx], , drop = FALSE], pheno=cv.train[,3], lasso_wgt=pred.wgt )
 			if ( sum(is.na(pred.wgt.lasso_ols)) == nrow(genos$bim) | sum(pred.wgt.lasso_ols != 0, na.rm=TRUE) == 0 ) {
+				# if all NA or all 0, fall back to top1 model
 				if ( opt$verbose >= 1 ) cat("LASSO_OLS pushed all weights to 0, using top1 as backup \n")
 				pred.wgt.lasso_ols = weights.marginal( genos$bed[ cv.sample[ -indx ],] , as.matrix(cv.train[,3,drop=F]) , beta=T )
 				pred.wgt.lasso_ols[ - which.max( pred.wgt.lasso_ols^2 ) ] = 0
 			}
-			replace_idx <- is.na(pred.wgt.lasso_ols) & !is.na(pred.wgt)
-			pred.wgt.lasso_ols[replace_idx] <- pred.wgt[replace_idx]
-			pred.wgt.lasso_ols[is.na(pred.wgt.lasso_ols)] <- 0
+			#replace_idx <- is.na(pred.wgt.lasso_ols) & !is.na(pred.wgt)
+			#pred.wgt.lasso_ols[replace_idx] <- pred.wgt[replace_idx]
+			#pred.wgt.lasso_ols[is.na(pred.wgt.lasso_ols)] <- 0
+			if (any(is.na(pred.wgt.lasso_ols))) { # if any SNP is NA from OLS, default to target population model
+    				pred.wgt.lasso_ols <- pred.wgt
+			}
 			if (length(pred.wgt.lasso_ols) == 1){
 				pred.wgt.lasso_ols <- t(pred.wgt.lasso_ols)
 			}
@@ -912,9 +916,12 @@ if ("LASSO_OLS" %in% model){
 		pred.wgtfull.lasso_ols = weights.marginal( genos$bed , as.matrix(pheno[,3]) , beta=T )
 		pred.wgtfull.lasso_ols[ - which.max( pred.wgtfull.lasso_ols^2 )] = 0
 	}
-	replace_idx <- is.na(pred.wgtfull.lasso_ols) & !is.na(pred.wgtfull)
-	pred.wgtfull.lasso_ols[replace_idx] <- pred.wgtfull[replace_idx]
-	pred.wgtfull.lasso_ols[is.na(pred.wgtfull.lasso_ols)] <- 0
+	#replace_idx <- is.na(pred.wgtfull.lasso_ols) & !is.na(pred.wgtfull)
+	#pred.wgtfull.lasso_ols[replace_idx] <- pred.wgtfull[replace_idx]
+	#pred.wgtfull.lasso_ols[is.na(pred.wgtfull.lasso_ols)] <- 0
+	if (any(is.na(pred.wgtfull.lasso_ols))) { # if any SNP is NA from OLS, default to target population model
+        	pred.wgtfull.lasso_ols <- pred.wgtfull
+        }
 	if(length(pred.wgtfull.lasso_ols) == 1){
 		pred.wgtfull.lasso_ols <- t(pred.wgtfull.lasso_ols)
 	}
@@ -923,12 +930,16 @@ if ("LASSO_OLS" %in% model){
 }
 # --- LASSO_RESCALE
 if ("LASSO_RESCALE" %in% model){
-	pred.wgtfull.lasso_rescale = weights.lasso_rescale( pred.wgtfull, genos$bed, pheno[,3] )
+	output_rescale = weights.lasso_rescale( pred.wgtfull, genos$bed, pheno[,3], getalpha = TRUE)
+	pred.wgtfull.lasso_rescale = output_rescale$wgts
+	rescale_alpha = output_rescale$alpha
 	if(length(pred.wgtfull.lasso_rescale) == 1){
 		pred.wgtfull.lasso_rescale <- t(pred.wgtfull.lasso_rescale)
 	}
 	wgt.matrix[, colcount] = pred.wgtfull.lasso_rescale
 	colcount = colcount + 1
+}else{
+	rescale_alpha <- NA
 }
 # --- SS-WEIGHTED META-ANALYSIS
 if ("META" %in% model){
@@ -1025,7 +1036,7 @@ for (i in 1:(opt$crossval-1)){
 avg_cor <- mean(cors_weights)
 # ---
 
-save( wgt.matrix, snps, cv.performance, hsq, hsq.pv, N.tot , wgtmagepro, cf_total, avg_training_r2_lasso, avg_training_r2_lasso_ols, avg_training_r2_lasso_rescale, avg_training_r2_meta, avg_training_r2_pt, avg_training_r2_susie, avg_training_r2_susie_impact, avg_training_r2_prscsx, avg_training_r2_magepro_fullsumstats, avg_training_r2_magepro, var_cov, avg_cor, LASSO_top1, file = paste( opt$out , ".wgt.RDat" , sep='' ) )
+save( wgt.matrix, snps, cv.performance, hsq, hsq.pv, N.tot , wgtmagepro, cf_total, avg_training_r2_lasso, avg_training_r2_lasso_ols, avg_training_r2_lasso_rescale, avg_training_r2_meta, avg_training_r2_pt, avg_training_r2_susie, avg_training_r2_susie_impact, avg_training_r2_prscsx, avg_training_r2_magepro_fullsumstats, avg_training_r2_magepro, var_cov, avg_cor, LASSO_top1, rescale_alpha, file = paste( opt$out , ".wgt.RDat" , sep='' ) )
 
 # --- CLEAN-UP
 if ( opt$verbose >= 1 ) cat("### CLEANING UP\n")

@@ -70,7 +70,7 @@ weights.lasso_ols = function( input , hsq , snp , genos , pheno , out=NA , lasso
 }
 
 # LASSO weight rescaling
-weights.lasso_rescale = function( pred.wgt , genos , pheno ) {
+weights.lasso_rescale = function( pred.wgt , genos , pheno, getalpha=FALSE) {
 	# PURPOSE: learn a scalar multiplier for LASSO weights via OLS on training predictions
 	# pred.wgt = LASSO weight vector
 	# genos = genotype matrix (rows = people, cols = snps)
@@ -80,11 +80,25 @@ weights.lasso_rescale = function( pred.wgt , genos , pheno ) {
 	if ( !is.na(sd(baseline_pred, na.rm=TRUE)) && sd(baseline_pred, na.rm=TRUE) != 0 ) {
 		fit_scale <- lm(pheno ~ baseline_pred)
 		alpha <- coef(fit_scale)[2]
-		if ( is.na(alpha) ) alpha <- 1
 	} else {
-		alpha <- 1
+		alpha <- NA
 	}
-	return( alpha * pred.wgt )
+	if (getalpha){
+		output = list()
+		if (length(alpha) == 0 || is.na(alpha)){
+			output$wgts <- pred.wgt
+			output$alpha <- NA
+		} else {
+			output$wgts <- alpha * pred.wgt
+                	output$alpha <- alpha
+		}
+		return(output)
+	} else {
+		if (length(alpha) == 0 || is.na(alpha)){
+			alpha <- 1
+		}
+		return(alpha * pred.wgt)
+	}
 }
 
 # Marginal Z-scores (used for top1)
