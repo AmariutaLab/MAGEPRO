@@ -60,7 +60,7 @@ weights.lasso_ols = function( input , hsq , snp , genos , pheno , out=NA , lasso
 	}
 	selected = which(lasso_wgt != 0)
 	if ( length(selected) == 0 ) {
-		return( eff.wgt )
+		return( rep(NA, length(snp)) )
 	}
 	y = as.matrix(pheno)
 	X = genos[, selected, drop=FALSE]
