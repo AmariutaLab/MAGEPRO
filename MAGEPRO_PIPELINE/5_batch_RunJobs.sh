@@ -7,8 +7,8 @@
 #SBATCH -t 03:00:00
 #SBATCH -J MAGEPRO
 #SBATCH -A csd832
-#SBATCH -o ../working_err/MAGEPRO.%j.%N.out
-#SBATCH -e ../working_err/MAGEPRO.%j.%N.err
+#SBATCH -o /expanse/lustre/projects/ddp412/kakamatsu/working_err/MAGEPRO.%j.%N.out
+#SBATCH -e /expanse/lustre/projects/ddp412/kakamatsu/working_err/MAGEPRO.%j.%N.err
 #SBATCH --export=ALL
 #SBATCH --constraint="lustre"
 #--- EDIT ABOVE TO SUIT YOUR HPC CLUSTER
