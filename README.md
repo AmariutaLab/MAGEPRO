@@ -1,4 +1,5 @@
 # MAGEPRO (Multi-Ancestry Gene Expression Prediction Regularized Optimization) <img src = IMAGES/veigar.png width="50" height="50"> <img src = IMAGES/wand.png width="50" height="50">
+
 [![DOI](https://zenodo.org/badge/639555341.svg)](https://zenodo.org/doi/10.5281/zenodo.13765893)
 
 MAGEPRO is a method to create powerful gene expression prediction models. We leverage eQTL summary statistics from diverse ancestries to optimize our gene models and enable the identification of novel gene-trait associations through transcriptome-wide association studies. 
@@ -345,7 +346,6 @@ If you would like to run MAGEPRO on one gene, it is possible to run MAGEPRO.R se
 | IMAGES | Images used in github |
 | MAGEPRO_PIPELINE | Intermediate scripts that are a part of the main MAGEPRO pipeline |
 | MAGEPRO_VALIDATE_PIPELINE | Pipeline used to validate MAGEPRO models in out-of-cohort prediction |
-| PLOTS | R scripts used to visualize data |
 | PROCESS_DATASET | Scripts used to extract and process eQTL summary statistics from various studies |
 | PROCESS_RESULTS | Scripts to process and summarize gene model performance |
 | SAMPLE_DATA | Description on how to download sample data |
@@ -356,4 +356,4 @@ If you would like to run MAGEPRO on one gene, it is possible to run MAGEPRO.R se
 | test_1gene | Scripts for testing |
 
 # Support 
-> contact kakamatsu@ucsd.edu
+> contact kakamatsu@ucla.edu
