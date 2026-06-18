@@ -48,4 +48,4 @@ h <- which(r2_h2[,1] == 0)
 if(length(h) > 0){r2_h2 <- r2_h2[-h,]}
 newcolnamesr2h2 <- c("gene", paste0(models, "_r2"), paste0(models, "_pv"), "hsq", "hsq_se", "hsq.pv", "datasets", "alphas", "var_covariates", "avg_cor", "rescale_alpha")
 colnames(r2_h2) <- newcolnamesr2h2
-write.table(r2_h2, file = paste0(output, "/MAGEPRO_results.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
+write.table(r2_h2, file = paste0(output, "/MAGEPRO_results_postlassoold_redo2.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
